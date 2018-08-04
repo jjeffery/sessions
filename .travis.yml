@@ -18,7 +18,10 @@ install:
 
 before_script:
   - wget http://dynamodb-local.s3-website-us-west-2.amazonaws.com/dynamodb_local_latest.tar.gz -O /tmp/dynamodb_local_latest.tar.gz
-  - java -Djava.library.path=/tmp/DynamoDBLocal_lib -jar /tmp/DynamoDBLocal.jar -inMemory &
+  - mkdir -p /usr/local/dynamodb-local
+  - tar -xzf /tmp/dynamodb_local_latest.tar.gz -C /usr/local/dynamodb-local
+  - rm -f /tmp.dynamodb_local_latest.tar.gz
+  - java -Djava.library.path=/usr/local/dynamodb-local/DynamoDBLocal_lib -jar /usr/local/dynamodb-local/DynamoDBLocal.jar -inMemory &
   - sleep 2
 
 script:
