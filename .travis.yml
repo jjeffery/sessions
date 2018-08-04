@@ -1,0 +1,29 @@
+language: go
+go:
+  - "1.10"
+  - "1.9"
+
+addons:
+  apt:
+    packages:
+      - oracle-java8-set-default
+
+install:
+  - go get github.com/aws/aws-sdk-go/...
+  - go get github.com/gorilla/securecookie
+  - go get github.com/gorilla/sessions
+  - go get github.com/jjeffery/errors
+  - go get github.com/mattn/goveralls
+  - go get golang.org/x/crypto/hkdf
+
+before_script:
+  - wget http://dynamodb-local.s3-website-us-west-2.amazonaws.com/dynamodb_local_latest.tar.gz -O /tmp/dynamodb_local_latest.tar.gz
+  - java -Djava.library.path=/tmp/DynamoDBLocal_lib -jar /tmp/DynamoDBLocal.jar -inMemory &
+  - sleep 2
+
+script:
+  - go test -race -coverprofile=coverage.txt ./...
+
+after_success:
+  - $GOPATH/bin/goveralls -coverprofile=coverage.out -service=travis-ci
+
