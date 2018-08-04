@@ -10,7 +10,8 @@ type Record struct {
 	Expires int64
 }
 
-// DB is a minimal interface for persisting session information to a database.
+// DB is the interface used by the session store for persisting session information
+// to a database.
 type DB interface {
 	// Get returns a record from the database given its unique ID. An unversioned
 	// record can have any value in the Version field, as it will be ignored.
