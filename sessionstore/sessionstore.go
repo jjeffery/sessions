@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -26,7 +25,7 @@ type sessionID [16]byte
 
 func newSessionID() (sessionID, error) {
 	var sid sessionID
-	if _, err := io.ReadFull(rand.Reader, sid[:]); err != nil {
+	if _, err := randRead(sid[:]); err != nil {
 		return sid, err
 	}
 	return sid, nil
@@ -86,7 +85,7 @@ func (ss *sessionStore) Get(r *http.Request, name string) (*sessions.Session, er
 	return sessions.GetRegistry(r).Get(ss, name)
 }
 
-// New creates and return a new session.
+// New creates and returns a new session.
 //
 // Note that New should never return a nil session, even in the case of
 // an error if using the Registry infrastructure to cache the session.
@@ -101,6 +100,8 @@ func (ss *sessionStore) New(r *http.Request, name string) (*sessions.Session, er
 		return session, nil
 	}
 	if err != nil {
+		// this will not get exercised, as ErrNoCookie is the
+		// only error returned by the http.Request.Cookie method
 		err = errors.Wrap(err, "cannot obtain cookie")
 		return session, err
 	}
