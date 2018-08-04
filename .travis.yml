@@ -25,7 +25,7 @@ before_script:
   - sleep 2
 
 script:
-  - go test -race -coverprofile=coverage.txt ./...
+  - go test -race -coverprofile=coverage.out ./...
 
 after_success:
   - $GOPATH/bin/goveralls -coverprofile=coverage.out -service=travis-ci
