@@ -136,10 +136,24 @@ func (safe *Safe) RefreshIn() time.Duration {
 	if len(cb.Secrets) == 0 {
 		return 0
 	}
-	next := cb.refreshed.Add(minimumRotationPeriod)
 	now := timeNowFunc()
-	if now.After(next) {
+
+	// check if it is time to rotate the secret key material
+	nextRotation := time.Unix(cb.Secrets[0].StartAt, 0).Add(safe.rotationPeriod)
+	if now.After(nextRotation) {
 		return 0
+	}
+
+	// check if it is time to perform a regular check
+	nextRefresh := cb.refreshed.Add(minimumRotationPeriod)
+	if now.After(nextRefresh) {
+		return 0
+	}
+
+	// choose the earliest time of next rotation or next refresh
+	next := nextRotation
+	if next.After(nextRefresh) {
+		next = nextRefresh
 	}
 
 	return next.Sub(now)

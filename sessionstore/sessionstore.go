@@ -52,11 +52,19 @@ func parseSessionID(str string) (sessionID, error) {
 	return sid, nil
 }
 
+// secretSafe is an interface designed for testing: the implementation
+// in sessionStore can be replaced during a unit test if required.
+type secretSafe interface {
+	RefreshIn() time.Duration
+	Refresh(context.Context) error
+	Codecs() (encode []securecookie.Codec, decode []securecookie.Codec)
+}
+
 type sessionStore struct {
 	appid   string
 	options sessions.Options
 	store   DB
-	safe    *secret.Safe
+	safe    secretSafe
 
 	rw struct {
 		mutex  sync.RWMutex
@@ -179,7 +187,7 @@ func (ss *sessionStore) Save(r *http.Request, w http.ResponseWriter, session *se
 }
 
 func (ss *sessionStore) codecs(ctx context.Context) (encode, decode []securecookie.Codec, err error) {
-	if ss.safe.RefreshIn() <= 0 {
+	for ss.safe.RefreshIn() <= 0 {
 		if err := ss.safe.Refresh(ctx); err != nil {
 			return nil, nil, err
 		}
@@ -188,12 +196,12 @@ func (ss *sessionStore) codecs(ctx context.Context) (encode, decode []securecook
 		ss.rw.encode = encode
 		ss.rw.decode = decode
 		ss.rw.mutex.Unlock()
-	} else {
-		ss.rw.mutex.RLock()
-		encode = ss.rw.encode
-		decode = ss.rw.decode
-		ss.rw.mutex.RUnlock()
 	}
+	ss.rw.mutex.RLock()
+	encode = ss.rw.encode
+	decode = ss.rw.decode
+	ss.rw.mutex.RUnlock()
+
 	return encode, decode, nil
 }
 
