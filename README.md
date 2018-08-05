@@ -1,4 +1,4 @@
-# sessions [![License](http://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://raw.githubusercontent.com/jjeffery/sessions/master/LICENSE.md) [![Build Status](https://travis-ci.org/jjeffery/sessions.svg?branch=master)](https://travis-ci.org/jjeffery/sessions)
+# sessions [![License](http://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://raw.githubusercontent.com/jjeffery/sessions/master/LICENSE.md) [![Build Status](https://travis-ci.org/jjeffery/sessions.svg?branch=master)](https://travis-ci.org/jjeffery/sessions) [![Coverage Status](https://coveralls.io/repos/github/jjeffery/sessions/badge.svg?branch=master)](https://coveralls.io/github/jjeffery/sessions?branch=master)
 
 This repository provides Go packages that supplement the popular
 [Gorilla Sessions](https://github.com/gorilla/sessions) package.
