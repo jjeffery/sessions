@@ -115,7 +115,7 @@ func (store *DB) Get(ctx context.Context, id string) (*sessionstore.Record, erro
 	input := &dynamodb.GetItemInput{
 		TableName: aws.String(store.tableName),
 		Key: map[string]*dynamodb.AttributeValue{
-			"id": &dynamodb.AttributeValue{
+			"id": {
 				S: aws.String(id),
 			},
 		},

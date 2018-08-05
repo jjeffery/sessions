@@ -1,4 +1,4 @@
-// Package sessionstore provides a session store for persistance of HTTP session data.
+// Package sessionstore provides a session store for persistence of HTTP session data.
 // The session store is compatible with Gorilla sessions (github.com/gorilla/sessions).
 //
 // The session store also persists randomly generated secret keying material that

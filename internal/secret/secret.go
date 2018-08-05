@@ -171,6 +171,9 @@ func (safe *Safe) Refresh(ctx context.Context) error {
 		if !ok {
 			// another station beat us to the update, so retrieve again
 			rec, err = safe.store.GetSecret(ctx)
+			if err != nil {
+				return err
+			}
 		}
 		cb, err = newCodeBook(rec)
 		if err != nil {
