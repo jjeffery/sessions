@@ -81,6 +81,9 @@ func (safe *Safe) RotationPeriod() time.Duration {
 // those whose start time is in the future.
 func (safe *Safe) Codecs() (encode []securecookie.Codec, decode []securecookie.Codec) {
 	cb := safe.cb()
+	if cb == nil {
+		return nil, nil
+	}
 	now := timeNowFunc().Unix()
 
 	encodeKeyPairs := make([][]byte, 0, len(cb.Secrets)*2)
@@ -252,11 +255,11 @@ func (cb *codeBookT) rotate(rotationPeriod time.Duration) error {
 	now := timeNowFunc()
 	rpSecs := int64(rotationPeriod.Seconds())
 
-	// remove any obsolete secrets, leaving at least one
-	// a secret is obsolete if it is older than twice the
-	// rotation period
+	// Remove any obsolete secrets, leaving at least one.
+	// A secret is obsolete if it is older than the first secret older
+	// than the rotation period. (Read that again, slowly).
 	{
-		before := now.Unix() - rpSecs*2
+		before := now.Unix() - rpSecs
 		for i := 0; i < len(cb.Secrets); i++ {
 			secret := cb.Secrets[i]
 			if secret.StartAt < before {
