@@ -9,11 +9,13 @@ services:
   - postgresql
 
 addons:
+  postgresql: "9.6"
   apt:
     packages:
       - oracle-java8-set-default
 
 install:
+  # install required go packages
   - go get github.com/aws/aws-sdk-go/...
   - go get github.com/gorilla/securecookie
   - go get github.com/gorilla/sessions
@@ -21,13 +23,14 @@ install:
   - go get github.com/lib/pq
   - go get github.com/mattn/goveralls
   - go get golang.org/x/crypto/hkdf
-
-before_script:
-  # install and start dynamodb local
+  # install aws dynamodb-local
   - wget http://dynamodb-local.s3-website-us-west-2.amazonaws.com/dynamodb_local_latest.tar.gz -O /tmp/dynamodb_local_latest.tar.gz
   - mkdir -p $HOME/dynamodb-local
   - tar -xzf /tmp/dynamodb_local_latest.tar.gz -C $HOME/dynamodb-local
   - rm -f /tmp/dynamodb_local_latest.tar.gz
+
+before_script:
+  # start dynamodb local
   - java -Djava.library.path=$HOME/dynamodb-local/DynamoDBLocal_lib -jar $HOME/dynamodb-local/DynamoDBLocal.jar -inMemory &
   - sleep 2
   # setup postgres test db
