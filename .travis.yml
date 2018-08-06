@@ -5,6 +5,9 @@ language: go
 go:
   - "1.10"
 
+services:
+  - postgresql
+
 addons:
   apt:
     packages:
@@ -19,12 +22,17 @@ install:
   - go get golang.org/x/crypto/hkdf
 
 before_script:
+  # install and start dynamodb local
   - wget http://dynamodb-local.s3-website-us-west-2.amazonaws.com/dynamodb_local_latest.tar.gz -O /tmp/dynamodb_local_latest.tar.gz
   - mkdir -p $HOME/dynamodb-local
   - tar -xzf /tmp/dynamodb_local_latest.tar.gz -C $HOME/dynamodb-local
   - rm -f /tmp/dynamodb_local_latest.tar.gz
   - java -Djava.library.path=$HOME/dynamodb-local/DynamoDBLocal_lib -jar $HOME/dynamodb-local/DynamoDBLocal.jar -inMemory &
   - sleep 2
+  # setup postgres test db
+  - psql -c "create database postgresstore_test;" -U postgres
+  - psql -c "create user postgresstore_test with password 'postgresstore_test';" -U postgres
+  - psql -c "grant all privileges on database postgresstore_test to postgresstore_test;" -U postgres
 
 script:
   # this does not work on go1.9 and below

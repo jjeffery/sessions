@@ -5,8 +5,8 @@ import (
 	"sync"
 )
 
-// clone copies a record, used for testing
-func (rec *Record) clone() *Record {
+// cloneRecord copies a record, used for testing
+func cloneRecord(rec *Record) *Record {
 	if rec == nil {
 		return nil
 	}
@@ -27,7 +27,7 @@ type memoryDB struct {
 func (mdb *memoryDB) Get(ctx context.Context, id string) (*Record, error) {
 	mdb.mutex.Lock()
 	defer mdb.mutex.Unlock()
-	return mdb.m[id].clone(), nil
+	return cloneRecord(mdb.m[id]), nil
 }
 
 func (mdb *memoryDB) PutUnversioned(ctx context.Context, rec *Record) error {
@@ -36,7 +36,7 @@ func (mdb *memoryDB) PutUnversioned(ctx context.Context, rec *Record) error {
 	if mdb.m == nil {
 		mdb.m = make(map[string]*Record)
 	}
-	mdb.m[rec.ID] = rec.clone()
+	mdb.m[rec.ID] = cloneRecord(rec)
 	return nil
 }
 
@@ -60,7 +60,7 @@ func (mdb *memoryDB) PutVersioned(ctx context.Context, rec *Record, oldVersion i
 	if mdb.m == nil {
 		mdb.m = make(map[string]*Record)
 	}
-	mdb.m[rec.ID] = rec.clone()
+	mdb.m[rec.ID] = cloneRecord(rec)
 	return true, nil
 }
 
