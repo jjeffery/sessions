@@ -15,6 +15,13 @@ DynamoDB table. The secrets used to sign and encrypt the
 [secure cookies](https://github.com/gorilla/securecookie) are created and
 stored in the same DynamoDB table, and they are rotated regularly.
 
+[![GoDoc](https://godoc.org/github.com/jjeffery/sessions/postgresstore?status.svg)](https://godoc.org/github.com/jjeffery/sessions/postgresstore)
+[postgresstore](https://godoc.org/github.com/jjeffery/sessions/postgresstore)
+provides a session store that persists session information to a PostgreSQL table.
+The secrets used to sign and encrypt the
+[secure cookies](https://github.com/gorilla/securecookie) are created and
+stored in the same database table, and they are rotated regularly.
+
 [![GoDoc](https://godoc.org/github.com/jjeffery/sessions/sessionstore?status.svg)](https://godoc.org/github.com/jjeffery/sessions/sessionstore)
 [sessionstore](https://godoc.org/github.com/jjeffery/sessions/sessionstore)
 contains most of the implementation used in package dynamodbstore, and makes
