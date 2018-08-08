@@ -1,8 +1,10 @@
 package sessionstore
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/gob"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/jjeffery/errors"
 	"github.com/jjeffery/sessions/internal/secret"
+	"github.com/jjeffery/sessions/storage"
 )
 
 var (
@@ -63,7 +66,7 @@ type secretSafe interface {
 type sessionStore struct {
 	appid   string
 	options sessions.Options
-	store   DB
+	db      storage.Provider
 	safe    secretSafe
 
 	rw struct {
@@ -79,12 +82,12 @@ type sessionStore struct {
 // database persistence (eg the same database table), then each web
 // application should use a different appid so that they generate and
 // rotate their own, independent secret keying material.
-func New(db DB, options sessions.Options, appid string) sessions.Store {
+func New(db storage.Provider, options sessions.Options, appid string) sessions.Store {
 	return &sessionStore{
 		appid:   appid,
 		options: options,
-		store:   db,
-		safe:    secret.New(newSecretStore(db, appid), time.Duration(options.MaxAge)*time.Second),
+		db:      db,
+		safe:    secret.New(db, time.Duration(options.MaxAge)*time.Second, appid),
 	}
 }
 
@@ -125,11 +128,14 @@ func (ss *sessionStore) New(r *http.Request, name string) (*sessions.Session, er
 		return session, err
 	}
 	session.ID = sid.String()
-	rec, err := ss.store.Get(r.Context(), ss.recordID(session))
+	rec, err := ss.db.Fetch(r.Context(), ss.recordID(session))
 	if err == nil && rec != nil {
 		session.IsNew = false //  session data exists, so not new
-		for k, v := range rec.Values {
-			session.Values[k] = v
+		if rec.Data != nil {
+			decoder := gob.NewDecoder(bytes.NewReader(rec.Data))
+			if err := decoder.Decode(&session.Values); err != nil {
+				return session, err
+			}
 		}
 	}
 	return session, err
@@ -141,7 +147,7 @@ func (ss *sessionStore) Save(r *http.Request, w http.ResponseWriter, session *se
 	if session.Options.MaxAge < 0 {
 		http.SetCookie(w, sessions.NewCookie(session.Name(), "", session.Options))
 		if session.ID != "" {
-			if err := ss.store.Delete(r.Context(), ss.recordID(session)); err != nil {
+			if err := ss.db.Delete(r.Context(), ss.recordID(session)); err != nil {
 				return err
 			}
 		}
@@ -156,21 +162,20 @@ func (ss *sessionStore) Save(r *http.Request, w http.ResponseWriter, session *se
 			session.ID = sid.String()
 		}
 
-		expireSeconds := int64(session.Options.MaxAge)
-		if expireSeconds <= 0 {
-			expireSeconds = 86400 * 30
+		expiresIn := time.Duration(session.Options.MaxAge) * time.Second
+		if expiresIn <= 0 {
+			expiresIn = time.Hour * 24
 		}
-		rec := Record{
+		rec := storage.Record{
 			ID:      ss.recordID(session),
-			Values:  make(map[string]interface{}),
-			Expires: nowFunc().Unix() + expireSeconds,
+			Format:  "gob",
+			Expires: nowFunc().Add(expiresIn),
 		}
-		for k, v := range session.Values {
-			if ks, ok := k.(string); ok {
-				rec.Values[ks] = v
-			}
+		rec.Data, err = encodeSession(session)
+		if err != nil {
+			return err
 		}
-		if err := ss.store.PutUnversioned(r.Context(), &rec); err != nil {
+		if err := ss.db.Save(r.Context(), &rec, -1); err != nil {
 			return err
 		}
 		encode, _, err := ss.codecs(r.Context())
@@ -211,4 +216,13 @@ func (ss *sessionStore) recordID(session *sessions.Session) string {
 		return session.ID
 	}
 	return ss.appid + "-" + session.ID
+}
+
+func encodeSession(session *sessions.Session) ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+	if err := encoder.Encode(session.Values); err != nil {
+		return nil, errors.Wrap(err, "cannot encode session values")
+	}
+	return buf.Bytes(), nil
 }

@@ -1,14 +1,15 @@
-package dynamodbstore
+package dynamodb
 
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/jjeffery/errors"
-	"github.com/jjeffery/sessions/sessionstore"
+	"github.com/jjeffery/sessions/storage"
 )
 
 // unversionedRecord represents an unversioned record in the DynamoDB table
@@ -26,26 +27,26 @@ type versionedRecord struct {
 	Expiration int64                  `dynamodbav:"expiration_time"`
 }
 
-// DB provides storage for sessions using an AWS DynamoDB table.
-// It implements the sessionstore.DB interface.
+// Provider provides storage for sessions using an AWS DynamoDB table.
+// It implements the storage.Provider interface.
 //
 // The structure of the DynamoDB table is described in the package
 // comment.
-type DB struct {
+type Provider struct {
 	dynamodb  *dynamodb.DynamoDB
 	tableName string
 }
 
-// NewDB creates a new DynamoDB DB given the AWS session and the DynamoDB table name.
-func NewDB(dynamodb *dynamodb.DynamoDB, tableName string) *DB {
-	return &DB{
+// New creates a new DynamoDB Provider given the AWS handle and the table name.
+func New(dynamodb *dynamodb.DynamoDB, tableName string) *Provider {
+	return &Provider{
 		dynamodb:  dynamodb,
 		tableName: tableName,
 	}
 }
 
 // CreateTable creates the dynamodb table.
-func (db *DB) CreateTable(readCapacityUnits, writeCapacityUnits int64) error {
+func (db *Provider) CreateTable(readCapacityUnits, writeCapacityUnits int64) error {
 	errors := errors.With("table", db.tableName)
 	_, err := db.dynamodb.CreateTable(&dynamodb.CreateTableInput{
 		AttributeDefinitions: []*dynamodb.AttributeDefinition{
@@ -91,7 +92,7 @@ func (db *DB) CreateTable(readCapacityUnits, writeCapacityUnits int64) error {
 }
 
 // DropTable deletes the DynamoDB table.
-func (db *DB) DropTable() error {
+func (db *Provider) DropTable() error {
 	_, err := db.dynamodb.DeleteTable(&dynamodb.DeleteTableInput{
 		TableName: aws.String(db.tableName),
 	})
@@ -109,8 +110,8 @@ func (db *DB) DropTable() error {
 	return nil
 }
 
-// Get implements the sessionstore.DB interface.
-func (db *DB) Get(ctx context.Context, id string) (*sessionstore.Record, error) {
+// Fetch implements the storage.Provider interface.
+func (db *Provider) Fetch(ctx context.Context, id string) (*storage.Record, error) {
 	errors := errors.With("id", id, "table", db.tableName)
 	input := &dynamodb.GetItemInput{
 		TableName: aws.String(db.tableName),
@@ -132,23 +133,44 @@ func (db *DB) Get(ctx context.Context, id string) (*sessionstore.Record, error) 
 	if err := dynamodbattribute.UnmarshalMap(output.Item, &rec); err != nil {
 		return nil, errors.Wrap(err, "unable to unmarshal record")
 	}
-	return &sessionstore.Record{
+	data, _ := rec.Values["Data"].([]byte)
+	format, _ := rec.Values["Format"].(string)
+	return &storage.Record{
 		ID:      rec.ID,
 		Version: rec.Version,
-		Values:  rec.Values,
-		Expires: rec.Expiration,
+		Format:  format,
+		Data:    data,
+		Expires: time.Unix(rec.Expiration, 0),
 	}, nil
 }
 
-// PutUnversioned implements the sessionstore.DB interface.
-func (db *DB) PutUnversioned(ctx context.Context, rec *sessionstore.Record) error {
-	errors := errors.With("id", rec.ID, "table", db.tableName)
-	uvrec := unversionedRecord{
-		ID:         rec.ID,
-		Values:     rec.Values,
-		Expiration: rec.Expires,
+func (db *Provider) Save(ctx context.Context, rec *storage.Record, oldVersion int64) error {
+	if oldVersion < 0 {
+		uvrec := unversionedRecord{
+			ID:         rec.ID,
+			Expiration: rec.Expires.Unix(),
+			Values: map[string]interface{}{
+				"Data":   rec.Data,
+				"Format": rec.Format,
+			},
+		}
+		return db.putUnversioned(ctx, &uvrec)
 	}
-	item, err := dynamodbattribute.MarshalMap(uvrec)
+	vrec := versionedRecord{
+		ID:         rec.ID,
+		Version:    rec.Version,
+		Expiration: rec.Expires.Unix(),
+		Values: map[string]interface{}{
+			"Data":   rec.Data,
+			"Format": rec.Format,
+		},
+	}
+	return db.putVersioned(ctx, &vrec, oldVersion)
+}
+
+func (db *Provider) putUnversioned(ctx context.Context, rec *unversionedRecord) error {
+	errors := errors.With("id", rec.ID, "table", db.tableName)
+	item, err := dynamodbattribute.MarshalMap(rec)
 	if err != nil {
 		return errors.Wrap(err, "failed to convert to dynamodb attribute value")
 	}
@@ -162,18 +184,11 @@ func (db *DB) PutUnversioned(ctx context.Context, rec *sessionstore.Record) erro
 	return nil
 }
 
-// PutVersioned implements the sessionstore.DB interface.
-func (db *DB) PutVersioned(ctx context.Context, rec *sessionstore.Record, oldVersion int64) (ok bool, err error) {
+func (db *Provider) putVersioned(ctx context.Context, rec *versionedRecord, oldVersion int64) error {
 	errors := errors.With("id", rec.ID, "table", db.tableName)
-	vrec := versionedRecord{
-		ID:         rec.ID,
-		Version:    rec.Version,
-		Values:     rec.Values,
-		Expiration: rec.Expires,
-	}
-	item, err := dynamodbattribute.MarshalMap(vrec)
+	item, err := dynamodbattribute.MarshalMap(rec)
 	if err != nil {
-		return false, errors.Wrap(err, "failed to convert to dynamodb attribute value")
+		return errors.Wrap(err, "failed to convert to dynamodb attribute value")
 	}
 	input := &dynamodb.PutItemInput{
 		Item:      item,
@@ -195,16 +210,16 @@ func (db *DB) PutVersioned(ctx context.Context, rec *sessionstore.Record, oldVer
 	if _, err := db.dynamodb.PutItemWithContext(ctx, input); err != nil {
 		if hasErrorCode(err, "ConditionalCheckFailedException") {
 			// optimistic locking check failed, return ok=false, but not an error
-			return false, nil
+			return storage.ErrVersionConflict
 		}
-		return false, errors.Wrap(err, "unable to save record in dynamodb")
+		return errors.Wrap(err, "unable to save record in dynamodb")
 	}
 
-	return true, nil
+	return nil
 }
 
-// Delete implements the sessionstore.DB interface.
-func (db *DB) Delete(ctx context.Context, id string) error {
+// Delete implements the storage.Provider interface.
+func (db *Provider) Delete(ctx context.Context, id string) error {
 	errors := errors.With("id", id, "table", db.tableName)
 	input := &dynamodb.DeleteItemInput{
 		Key: map[string]*dynamodb.AttributeValue{

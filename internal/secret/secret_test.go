@@ -7,18 +7,19 @@ import (
 	"time"
 
 	"github.com/gorilla/securecookie"
+	"github.com/jjeffery/sessions/storage/memory"
 )
 
 func TestRefresh(t *testing.T) {
 	defer restoreStubs()
-	store := &memoryStore{}
 	ctx := context.Background()
-	safe := New(store, 0)
 
 	now := time.Now()
 	timeNowFunc = func() time.Time {
 		return now
 	}
+	store := memory.New().WithTimeNow(timeNowFunc)
+	safe := New(store, 0, "")
 
 	if got, want := safe.shouldRefreshNow(), true; got != want {
 		t.Fatalf("got=%v, want=%v", got, want)
@@ -75,11 +76,11 @@ func TestRefresh(t *testing.T) {
 }
 
 func TestRotatePeriod(t *testing.T) {
-	safe := New(&memoryStore{}, 0)
+	safe := New(memory.New(), 0, "")
 	if got, want := safe.RotationPeriod(), defaultRotationPeriod; got != want {
 		t.Fatalf("got=%v, want=%v", got, want)
 	}
-	safe = New(&memoryStore{}, time.Second*30)
+	safe = New(memory.New(), time.Second*30, "")
 	if got, want := safe.RotationPeriod(), minimumRotationPeriod; got != want {
 		t.Fatalf("got=%v, want=%v", got, want)
 	}
@@ -104,9 +105,10 @@ func TestCodecs(t *testing.T) {
 	timeNowFunc = func() time.Time {
 		return fakeNow
 	}
+	db := memory.New().WithTimeNow(timeNowFunc)
 
 	ctx := context.Background()
-	safe := New(&memoryStore{}, 0)
+	safe := New(db, 0, "")
 
 	encode, decode := safe.Codecs()
 	wantNilCodecs(t, encode)
@@ -232,6 +234,7 @@ func restoreStubs() {
 	randReadFunc = rand.Read
 }
 
+/*
 type memoryStore struct {
 	rec    *Record
 	getErr error
@@ -265,6 +268,7 @@ func (ms *memoryStore) PutSecret(ctx context.Context, rec *Record) (bool, error)
 	ms.rec = &copy
 	return true, nil
 }
+*/
 
 func (safe *Safe) shouldRefreshNow() bool {
 	return safe.RefreshIn() <= 0

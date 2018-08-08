@@ -1,4 +1,4 @@
-package dynamodbstore
+package dynamodb
 
 import (
 	"testing"
@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/jjeffery/sessions/internal/testhelper"
-	"github.com/jjeffery/sessions/sessionstore"
+	"github.com/jjeffery/sessions/storage"
 )
 
 func newDynamoDB() *dynamodb.DynamoDB {
@@ -21,9 +21,10 @@ func newDynamoDB() *dynamodb.DynamoDB {
 	return dynamodb.New(session)
 }
 
+// do something
 func TestDynamoDB(t *testing.T) {
-	newDB := func() sessionstore.DB {
-		db := NewDB(newDynamoDB(), "http_sessions")
+	newDB := func() storage.Provider {
+		db := New(newDynamoDB(), "http_sessions")
 		if err := db.DropTable(); err != nil {
 			t.Fatal(err)
 		}
@@ -33,5 +34,6 @@ func TestDynamoDB(t *testing.T) {
 		return db
 	}
 
-	testhelper.SessionStoreTest(t, newDB)
+	testhelper.TestSessionStore(t, newDB)
+	testhelper.TestStorageProvider(t, newDB())
 }

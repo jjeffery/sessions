@@ -1,5 +1,6 @@
 # sessions
 
+[![GoDoc](https://godoc.org/github.com/jjeffery/sessions?status.svg)](https://godoc.org/github.com/jjeffery/sessions/storage)
 [![License](http://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://raw.githubusercontent.com/jjeffery/sessions/master/LICENSE.md)
 [![Build Status](https://travis-ci.org/jjeffery/sessions.svg?branch=master)](https://travis-ci.org/jjeffery/sessions)
 [![Coverage Status](https://coveralls.io/repos/github/jjeffery/sessions/badge.svg?branch=master)](https://coveralls.io/github/jjeffery/sessions?branch=master)
@@ -8,22 +9,17 @@
 This repository provides Go packages that supplement the popular
 [Gorilla Sessions](https://github.com/gorilla/sessions) package.
 
-[![GoDoc](https://godoc.org/github.com/jjeffery/sessions/dynamodbstore?status.svg)](https://godoc.org/github.com/jjeffery/sessions/dynamodbstore)
-[dynamodbstore](https://godoc.org/github.com/jjeffery/sessions/dynamodbstore)
-provides a session store that persists session information to an AWS
-DynamoDB table. The secrets used to sign and encrypt the
-[secure cookies](https://github.com/gorilla/securecookie) are created and
-stored in the same DynamoDB table, and they are rotated regularly.
+Package [sessionstore](https://godoc.org/github.com/jjeffery/sessions/sessionstore)
+provides a session store implementation that persists session information using
+a simple [storage interface](https://godoc.org/github.com/jjeffery/sessions/storage#Provider).
+Secret key material used for signing and encrypting
+[secure cookies](https://github.com/gorilla/securecookie) is stored using the same storage provider.
+The secret keying material is automatically generated and is rotated regularly.
 
-[![GoDoc](https://godoc.org/github.com/jjeffery/sessions/postgresstore?status.svg)](https://godoc.org/github.com/jjeffery/sessions/postgresstore)
-[postgresstore](https://godoc.org/github.com/jjeffery/sessions/postgresstore)
-provides a session store that persists session information to a PostgreSQL table.
-The secrets used to sign and encrypt the
-[secure cookies](https://github.com/gorilla/securecookie) are created and
-stored in the same database table, and they are rotated regularly.
+Package [storage](https://godoc.org/github.com/jjeffery/sessions/storage) defines a simple interface
+for storage of both session information and secret keying material. There are sub-directories
+containing packages with implementations for the following:
 
-[![GoDoc](https://godoc.org/github.com/jjeffery/sessions/sessionstore?status.svg)](https://godoc.org/github.com/jjeffery/sessions/sessionstore)
-[sessionstore](https://godoc.org/github.com/jjeffery/sessions/sessionstore)
-contains most of the implementation used in package dynamodbstore, and makes
-it fairly easy to implement similar functionality using a different persistent
-storage technology, such as Redis or Memstore.
+- Package [dynamodb](htps://godoc.org/github.com/jjeffery/sessions/storage/dynamodb): AWS DynamoDB
+- Package [postgres](https://godoc.org/github.com/jjeffery/sessions/storage/postgres): PostgreSQL
+- Package [memory](https://godoc.org/github.com/jjeffery/sessions/storage/memory): Memory (for testing only)

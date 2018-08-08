@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/securecookie"
 	"github.com/jjeffery/errors"
+	"github.com/jjeffery/sessions/storage"
 	"golang.org/x/crypto/hkdf"
 )
 
@@ -46,24 +47,29 @@ type Safe struct {
 	rotationPeriod time.Duration
 	mutex          sync.RWMutex
 	codeBook       *codeBookT
-	store          Store
+	db             storage.Provider
+	secretID       string
 }
 
 // New returns a new safe which persists secrets using the store.
 // The rotation period is the number of seconds between key rotation,
 // and should be set to be at least the max-age of the cookie. If
 // zero is passed, then a large default value is used.
-func New(store Store, rotationPeriod time.Duration) *Safe {
+func New(store storage.Provider, rotationPeriod time.Duration, secretID string) *Safe {
 	if rotationPeriod <= 0 {
 		rotationPeriod = defaultRotationPeriod
 	}
 	if rotationPeriod < minimumRotationPeriod {
 		rotationPeriod = minimumRotationPeriod
 	}
+	if secretID == "" {
+		secretID = "secret"
+	}
 
 	return &Safe{
-		store:          store,
+		db:             store,
 		rotationPeriod: rotationPeriod,
+		secretID:       secretID,
 	}
 }
 
@@ -161,7 +167,7 @@ func (safe *Safe) RefreshIn() time.Duration {
 
 // Refresh the secrets from  the secret store.
 func (safe *Safe) Refresh(ctx context.Context) error {
-	rec, err := safe.store.GetSecret(ctx)
+	rec, err := safe.db.Fetch(ctx, safe.secretID)
 	if err != nil {
 		return err
 	}
@@ -177,17 +183,19 @@ func (safe *Safe) Refresh(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		rec.Expires = timeNowFunc().Add(safe.rotationPeriod * 2).Unix()
-		ok, err := safe.store.PutSecret(ctx, rec)
-		if err != nil {
-			return err
-		}
-		if !ok {
+		oldVersion := rec.Version
+		rec.Version++
+		rec.Expires = timeNowFunc().Add(safe.rotationPeriod * 2)
+		rec.ID = safe.secretID
+		err := safe.db.Save(ctx, rec, oldVersion)
+		if err == storage.ErrVersionConflict {
 			// another station beat us to the update, so retrieve again
-			rec, err = safe.store.GetSecret(ctx)
+			rec, err = safe.db.Fetch(ctx, safe.secretID)
 			if err != nil {
 				return err
 			}
+		} else if err != nil {
+			return err
 		}
 		cb, err = newCodeBook(rec)
 		if err != nil {
@@ -222,26 +230,26 @@ type codeBookT struct {
 	refreshed time.Time  // time of last refresh
 }
 
-func (cb *codeBookT) toRecord() (*Record, error) {
+func (cb *codeBookT) toRecord() (*storage.Record, error) {
 	data, err := cb.marshal()
 	if err != nil {
 		return nil, err
 	}
-	return &Record{
+	return &storage.Record{
 		Version: cb.Version,
 		Format:  gobFormat,
-		Secret:  data,
+		Data:    data,
 	}, nil
 }
 
-func newCodeBook(rec *Record) (*codeBookT, error) {
+func newCodeBook(rec *storage.Record) (*codeBookT, error) {
 	cb := &codeBookT{}
 	if rec != nil {
 		cb.Version = rec.Version
 		if rec.Format != gobFormat {
 			return nil, fmt.Errorf("unsupported secret record format: %s", rec.Format)
 		}
-		if err := cb.unmarshal(rec.Secret); err != nil {
+		if err := cb.unmarshal(rec.Data); err != nil {
 			return nil, err
 		}
 	}
@@ -327,28 +335,4 @@ func (cb *codeBookT) rotate(rotationPeriod time.Duration) error {
 	}
 
 	return nil
-}
-
-// Record contains the secret to be persisted to the store.
-type Record struct {
-	Version int64  // optimistic locking version
-	Secret  []byte // opaque secret data
-	Format  string // storage format
-	Expires int64  // expiry in unix time
-}
-
-// Store represents a persistent store of secrets
-type Store interface {
-	// Get the secret from the store.
-	GetSecret(context.Context) (*Record, error)
-
-	// Save the data to the store. 	If the store is updated successfully
-	// then ok will be true and the record's Version field will be updated
-	// to contain the new version stored.
-	//
-	// If the store has a different version because another station has
-	// updated the store prior, then ok will be false and the record will
-	// be unchanged. In this instance, call GetSecret to obtain the most
-	// recent secret.
-	PutSecret(context.Context, *Record) (ok bool, err error)
 }

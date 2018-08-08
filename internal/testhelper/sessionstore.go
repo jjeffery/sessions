@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/sessions"
 	"github.com/jjeffery/sessions/sessionstore"
+	"github.com/jjeffery/sessions/storage"
 )
 
 // responseRecorder is an implementation of http.ResponseWriter that
@@ -52,28 +53,28 @@ func (rw *responseRecorder) Flush() {
 	rw.Flushed = true
 }
 
-// SessionStoreTest tests session store functionality given a
-// sessionstore.DB for persistence.
-func SessionStoreTest(t *testing.T, newDB func() sessionstore.DB) {
+// TestSessionStore tests session store functionality given a
+// storage.Provider for persistence.
+func TestSessionStore(t *testing.T, newDB func() storage.Provider) {
 	var (
-		req          *http.Request
-		rsp          *responseRecorder
-		session      *sessions.Session
-		err          error
-		sessionStore sessions.Store
-		flashes      []interface{}
-		hdr          http.Header
-		cookies      []string
-		ok           bool
+		req     *http.Request
+		rsp     *responseRecorder
+		session *sessions.Session
+		err     error
+		store   sessions.Store
+		flashes []interface{}
+		hdr     http.Header
+		cookies []string
+		ok      bool
 	)
 
-	sessionStore = sessionstore.New(newDB(), sessions.Options{}, "")
+	store = sessionstore.New(newDB(), sessions.Options{}, "")
 
 	req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
 	rsp = newRecorder()
 
 	// Get a session.
-	if session, err = sessionStore.Get(req, "session-key"); err != nil {
+	if session, err = store.Get(req, "session-key"); err != nil {
 		t.Fatalf("Error getting session: %v", err)
 	}
 	// Get a flash.
@@ -103,7 +104,7 @@ func SessionStoreTest(t *testing.T, newDB func() sessionstore.DB) {
 	req.Header.Add("Cookie", cookies[0])
 	rsp = newRecorder()
 	// Get a session.
-	if session, err = sessionStore.Get(req, "session-key"); err != nil {
+	if session, err = store.Get(req, "session-key"); err != nil {
 		t.Fatalf("Error getting session: %v", err)
 	}
 	// Check all saved values.
@@ -140,12 +141,12 @@ func SessionStoreTest(t *testing.T, newDB func() sessionstore.DB) {
 
 	// Round 3 ----------------------------------------------------------------
 
-	sessionStore = sessionstore.New(newDB(), sessions.Options{}, "")
+	store = sessionstore.New(newDB(), sessions.Options{}, "")
 
 	req, _ = http.NewRequest("GET", "http://localhost:8080/", nil)
 	rsp = newRecorder()
 	// Get a session.
-	if session, err = sessionStore.Get(req, "session-key"); err != nil {
+	if session, err = store.Get(req, "session-key"); err != nil {
 		t.Fatalf("Error getting session: %v", err)
 	}
 	// Get a flash.
@@ -167,7 +168,7 @@ func SessionStoreTest(t *testing.T, newDB func() sessionstore.DB) {
 
 	// Get a session.
 	req.Header.Add("Cookie", cookies[0])
-	if session, err = sessionStore.Get(req, "session-key"); err != nil {
+	if session, err = store.Get(req, "session-key"); err != nil {
 		t.Fatalf("Error getting session: %v", err)
 	}
 	// Check all saved values.
