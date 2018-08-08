@@ -85,7 +85,7 @@ type Store struct {
 // New creates a new store suitable for persisting sessions. Session
 // data is persisted using db and options provides information about
 // the session cookies. If multiple web applications use the same
-// database persistence (eg the same database table), then each web
+// provider (eg the same database table), then each web
 // application should use a different appid so that they generate and
 // rotate their own, independent secret keying material.
 func New(db storage.Provider, options sessions.Options, appid string) *Store {
