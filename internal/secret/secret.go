@@ -1,4 +1,4 @@
-// Package secret is for creating, storing and rotating secrets used for encrypting session cookies.
+// Package secret is for creating, storing and rotating secret keying material.
 package secret
 
 import (
