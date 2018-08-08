@@ -63,7 +63,13 @@ type secretSafe interface {
 	Codecs() (encode []securecookie.Codec, decode []securecookie.Codec)
 }
 
-type sessionStore struct {
+// Store implements the Gorilla Sessions sessions.Store interface for persistence
+// of HTTP session data.
+//
+// The Store automatically generates and persists random secret keying material
+// that is used for generating the keys used to sign and encrypt the secure session
+// cookies. The secret keying material is regularly rotated.
+type Store struct {
 	appid   string
 	options sessions.Options
 	db      storage.Provider
@@ -82,8 +88,8 @@ type sessionStore struct {
 // database persistence (eg the same database table), then each web
 // application should use a different appid so that they generate and
 // rotate their own, independent secret keying material.
-func New(db storage.Provider, options sessions.Options, appid string) sessions.Store {
-	return &sessionStore{
+func New(db storage.Provider, options sessions.Options, appid string) *Store {
+	return &Store{
 		appid:   appid,
 		options: options,
 		db:      db,
@@ -92,7 +98,7 @@ func New(db storage.Provider, options sessions.Options, appid string) sessions.S
 }
 
 // Get returns a cached session.
-func (ss *sessionStore) Get(r *http.Request, name string) (*sessions.Session, error) {
+func (ss *Store) Get(r *http.Request, name string) (*sessions.Session, error) {
 	return sessions.GetRegistry(r).Get(ss, name)
 }
 
@@ -100,7 +106,7 @@ func (ss *sessionStore) Get(r *http.Request, name string) (*sessions.Session, er
 //
 // Note that New should never return a nil session, even in the case of
 // an error if using the Registry infrastructure to cache the session.
-func (ss *sessionStore) New(r *http.Request, name string) (*sessions.Session, error) {
+func (ss *Store) New(r *http.Request, name string) (*sessions.Session, error) {
 	session := sessions.NewSession(ss, name)
 	// make a copy
 	options := ss.options
@@ -142,7 +148,7 @@ func (ss *sessionStore) New(r *http.Request, name string) (*sessions.Session, er
 }
 
 // Save persists session to the underlying store implementation.
-func (ss *sessionStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+func (ss *Store) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
 	// Marked for deletion.
 	if session.Options.MaxAge < 0 {
 		http.SetCookie(w, sessions.NewCookie(session.Name(), "", session.Options))
@@ -191,7 +197,7 @@ func (ss *sessionStore) Save(r *http.Request, w http.ResponseWriter, session *se
 	return nil
 }
 
-func (ss *sessionStore) codecs(ctx context.Context) (encode, decode []securecookie.Codec, err error) {
+func (ss *Store) codecs(ctx context.Context) (encode, decode []securecookie.Codec, err error) {
 	for ss.safe.RefreshIn() <= 0 {
 		if err := ss.safe.Refresh(ctx); err != nil {
 			return nil, nil, err
@@ -211,7 +217,7 @@ func (ss *sessionStore) codecs(ctx context.Context) (encode, decode []securecook
 }
 
 // recordID returns the unique ID for saving a session record to persistent storage
-func (ss *sessionStore) recordID(session *sessions.Session) string {
+func (ss *Store) recordID(session *sessions.Session) string {
 	if ss.appid == "" {
 		return session.ID
 	}
