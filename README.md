@@ -20,6 +20,6 @@ Package [storage](https://godoc.org/github.com/jjeffery/sessions/storage) define
 for storage of both session information and secret keying material. There are sub-directories
 containing packages with implementations for the following:
 
-- Package [dynamodb](htps://godoc.org/github.com/jjeffery/sessions/storage/dynamodb): AWS DynamoDB
+- Package [dynamodb](https://godoc.org/github.com/jjeffery/sessions/storage/dynamodb): AWS DynamoDB
 - Package [postgres](https://godoc.org/github.com/jjeffery/sessions/storage/postgres): PostgreSQL
 - Package [memory](https://godoc.org/github.com/jjeffery/sessions/storage/memory): Memory (for testing only)
