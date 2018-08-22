@@ -1,6 +1,6 @@
 # sessions
 
-[![GoDoc](https://godoc.org/github.com/jjeffery/sessions?status.svg)](https://godoc.org/github.com/jjeffery/sessions/storage)
+[![GoDoc](https://godoc.org/github.com/jjeffery/sessions?status.svg)](https://godoc.org/github.com/jjeffery/sessions)
 [![License](http://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://raw.githubusercontent.com/jjeffery/sessions/master/LICENSE.md)
 [![Build Status](https://travis-ci.org/jjeffery/sessions.svg?branch=master)](https://travis-ci.org/jjeffery/sessions)
 [![Coverage Status](https://coveralls.io/repos/github/jjeffery/sessions/badge.svg?branch=master)](https://coveralls.io/github/jjeffery/sessions?branch=master)
