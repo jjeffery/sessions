@@ -175,10 +175,11 @@ func (safe *Safe) Refresh(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := cb.rotate(safe.rotationPeriod); err != nil {
+	modified, err := cb.rotate(safe.rotationPeriod)
+	if err != nil {
 		return err
 	}
-	if cb.modified {
+	if modified {
 		rec, err = cb.toRecord()
 		if err != nil {
 			return err
@@ -226,7 +227,6 @@ type secretT struct {
 type codeBookT struct {
 	Version   int64      // Optimistic locking version
 	Secrets   []*secretT // Most recent first
-	modified  bool       // if modified after
 	refreshed time.Time  // time of last refresh
 }
 
@@ -276,7 +276,7 @@ func (cb *codeBookT) unmarshal(data []byte) error {
 }
 
 // rotate adds a new secret to the code book, and removes any obsolete secrets.
-func (cb *codeBookT) rotate(rotationPeriod time.Duration) error {
+func (cb *codeBookT) rotate(rotationPeriod time.Duration) (modified bool, err error) {
 	now := timeNowFunc()
 	rpSecs := int64(rotationPeriod.Seconds())
 
@@ -289,7 +289,7 @@ func (cb *codeBookT) rotate(rotationPeriod time.Duration) error {
 			secret := cb.Secrets[i]
 			if secret.StartAt < before {
 				cb.Secrets = cb.Secrets[:i+1]
-				cb.modified = true
+				modified = true
 				break
 			}
 		}
@@ -309,7 +309,7 @@ func (cb *codeBookT) rotate(rotationPeriod time.Duration) error {
 	if keyRequired {
 		var keyingMaterial [32]byte
 		if _, err := randReadFunc(keyingMaterial[:]); err != nil {
-			return errors.Wrap(err, "cannot read random bytes")
+			return modified, errors.Wrap(err, "cannot read random bytes")
 		}
 
 		startAt := now.Unix()
@@ -331,8 +331,8 @@ func (cb *codeBookT) rotate(rotationPeriod time.Duration) error {
 		secrets = append(secrets, secret)
 		secrets = append(secrets, cb.Secrets...)
 		cb.Secrets = secrets
-		cb.modified = true
+		modified = true
 	}
 
-	return nil
+	return modified, nil
 }
