@@ -1,4 +1,4 @@
-package codecstore
+package codec
 
 import (
 	"context"
@@ -13,12 +13,12 @@ import (
 )
 
 func TestRotatePeriod(t *testing.T) {
-	safe := New(memory.New(), 0, "")
-	if got, want := safe.RotationPeriod(), defaultRotationPeriod; got != want {
+	codec := New(memory.New(), 0, "")
+	if got, want := codec.RotationPeriod, DefaultRotationPeriod; got != want {
 		t.Fatalf("got=%v, want=%v", got, want)
 	}
-	safe = New(memory.New(), time.Second*30, "")
-	if got, want := safe.RotationPeriod(), minimumRotationPeriod; got != want {
+	codec = New(memory.New(), time.Second*30, "")
+	if got, want := codec.RotationPeriod, MinimumRotationPeriod; got != want {
 		t.Fatalf("got=%v, want=%v", got, want)
 	}
 }
@@ -30,12 +30,12 @@ func TestEncodeDecode(t *testing.T) {
 	}
 	db := memory.New().WithTimeNow(timeNowFunc)
 	ctx := context.Background()
-	store := New(db, time.Hour, "")
+	codec := New(db, time.Hour, "")
 
 	cookies := make(map[string]time.Time)
 
 	for i := 0; i < 720; i++ {
-		codec, err := store.Codec(ctx)
+		err := codec.Refresh(ctx)
 		wantNilError(t, err)
 		cookie, err := codec.Encode("cookie", "some value")
 		wantNilError(t, err)
@@ -73,7 +73,7 @@ func TestRace(t *testing.T) {
 	}
 	db := memory.New().WithTimeNow(timeNowFunc)
 	ctx := context.Background()
-	store := New(db, time.Hour, "")
+	codec := New(db, time.Hour, "")
 
 	var wg sync.WaitGroup
 
@@ -81,7 +81,7 @@ func TestRace(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			for i := 0; i < 7200; i++ {
-				_, err := store.Codec(ctx)
+				err := codec.Refresh(ctx)
 				wantNilError(t, err)
 				advanceTime()
 			}
@@ -114,49 +114,51 @@ func TestCodec(t *testing.T) {
 	db := memory.New().WithTimeNow(timeNowFunc)
 
 	ctx := context.Background()
-	safe := New(db, 0, "")
+	codec := New(db, 0, "")
 
-	codec1, err := safe.Codec(ctx)
+	err := codec.Refresh(ctx)
 	wantNilError(t, err)
-	wantCodecLength(t, codec1.encoders, 1)
-	wantCodecLength(t, codec1.decoders, 1)
+	wantCodecLength(t, codec.codec.encoders, 1)
+	wantCodecLength(t, codec.codec.decoders, 1)
+	comp := newComparer(codec)
 
-	fakeNow = fakeNow.Add(minimumRotationPeriod - 10*time.Millisecond)
-	codec2, err := safe.Codec(ctx)
+	fakeNow = fakeNow.Add(MinimumRotationPeriod - 10*time.Millisecond)
+	err = codec.Refresh(ctx)
 	wantNilError(t, err)
-	wantSameCodecs(t, codec1, codec2)
+	comp.wantSame(t, codec)
 
 	fakeNow = fakeNow.Add(11 * time.Millisecond)
-	codec2, err = safe.Codec(ctx)
+	err = codec.Refresh(ctx)
 	wantNilError(t, err)
-	wantDifferentCodecs(t, codec1, codec2)
-	wantCodecLength(t, codec2.encoders, 1)
-	wantCodecLength(t, codec2.decoders, 1)
+	comp.wantDifferent(t, codec)
+	wantCodecLength(t, codec.codec.encoders, 1)
+	wantCodecLength(t, codec.codec.decoders, 1)
 
-	fakeNow = fakeNow.Add(safe.RotationPeriod())
-	codec1, err = safe.Codec(ctx)
+	fakeNow = fakeNow.Add(codec.RotationPeriod)
+	err = codec.Refresh(ctx)
 	wantNilError(t, err)
-	wantCodecLength(t, codec1.encoders, 1)
-	wantCodecLength(t, codec1.decoders, 2)
+	wantCodecLength(t, codec.codec.encoders, 1)
+	wantCodecLength(t, codec.codec.decoders, 2)
+	comp = newComparer(codec)
 
-	fakeNow = fakeNow.Add(minimumRotationPeriod + time.Millisecond)
-	codec2, err = safe.Codec(ctx)
+	fakeNow = fakeNow.Add(MinimumRotationPeriod + time.Millisecond)
+	err = codec.Refresh(ctx)
 	wantNilError(t, err)
-	wantDifferentCodecs(t, codec1, codec2)
-	wantCodecLength(t, codec2.encoders, 2)
-	wantCodecLength(t, codec2.decoders, 2)
+	comp.wantDifferent(t, codec)
+	wantCodecLength(t, codec.codec.encoders, 2)
+	wantCodecLength(t, codec.codec.decoders, 2)
 
-	fakeNow = fakeNow.Add(safe.RotationPeriod() + time.Millisecond)
-	codec1, err = safe.Codec(ctx)
+	fakeNow = fakeNow.Add(codec.RotationPeriod + time.Millisecond)
+	err = codec.Refresh(ctx)
 	wantNilError(t, err)
-	wantCodecLength(t, codec1.encoders, 2)
-	wantCodecLength(t, codec1.decoders, 2)
+	wantCodecLength(t, codec.codec.encoders, 2)
+	wantCodecLength(t, codec.codec.decoders, 2)
 
-	fakeNow = fakeNow.Add(minimumRotationPeriod + time.Millisecond)
-	codec1, err = safe.Codec(ctx)
+	fakeNow = fakeNow.Add(MinimumRotationPeriod + time.Millisecond)
+	err = codec.Refresh(ctx)
 	wantNilError(t, err)
-	wantCodecLength(t, codec1.encoders, 1)
-	wantCodecLength(t, codec1.decoders, 2)
+	wantCodecLength(t, codec.codec.encoders, 1)
+	wantCodecLength(t, codec.codec.decoders, 2)
 }
 
 func wantNilError(t *testing.T, err error) {
@@ -198,4 +200,28 @@ func wantDifferentCodecs(t *testing.T, c1, c2 securecookie.Codec) {
 func restoreStubs() {
 	timeNowFunc = time.Now
 	randReadFunc = rand.Read
+}
+
+type codecComparer struct {
+	ic *immutableCodec
+}
+
+func newComparer(codec *Codec) codecComparer {
+	return codecComparer{
+		ic: codec.codec,
+	}
+}
+
+func (c codecComparer) wantSame(t *testing.T, codec *Codec) {
+	t.Helper()
+	if c.ic != codec.codec {
+		t.Fatal("want same codec details")
+	}
+}
+
+func (c codecComparer) wantDifferent(t *testing.T, codec *Codec) {
+	t.Helper()
+	if c.ic == codec.codec {
+		t.Fatal("want different codec details")
+	}
 }

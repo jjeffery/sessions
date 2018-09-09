@@ -11,7 +11,7 @@ import (
 
 	"github.com/gorilla/sessions"
 	"github.com/jjeffery/errors"
-	"github.com/jjeffery/sessions/codecstore"
+	"github.com/jjeffery/sessions/codec"
 	"github.com/jjeffery/sessions/storage"
 )
 
@@ -62,7 +62,7 @@ type Store struct {
 	appid   string
 	options sessions.Options
 	db      storage.Provider
-	codecs  *codecstore.Store
+	codec   *codec.Codec
 }
 
 // New creates a new store suitable for persisting sessions. Session
@@ -76,7 +76,7 @@ func New(db storage.Provider, options sessions.Options, appid string) *Store {
 		appid:   appid,
 		options: options,
 		db:      db,
-		codecs:  codecstore.New(db, time.Duration(options.MaxAge)*time.Second, appid),
+		codec:   codec.New(db, time.Duration(options.MaxAge)*time.Second, appid),
 	}
 }
 
@@ -105,13 +105,12 @@ func (ss *Store) New(r *http.Request, name string) (*sessions.Session, error) {
 		err = errors.Wrap(err, "cannot obtain cookie")
 		return session, err
 	}
-	codec, err := ss.codecs.Codec(r.Context())
-	if err != nil {
-		err = errors.Wrap(err, "cannot get codec")
+	if err := ss.codec.Refresh(r.Context()); err != nil {
+		err = errors.Wrap(err, "cannot refresh codec")
 		return session, err
 	}
 	var sid sessionID
-	err = codec.Decode(name, c.Value, &sid)
+	err = ss.codec.Decode(name, c.Value, &sid)
 	if err != nil {
 		err = errors.Wrap(err, "cannot decode cookie")
 		return session, err
@@ -167,11 +166,10 @@ func (ss *Store) Save(r *http.Request, w http.ResponseWriter, session *sessions.
 		if err := ss.db.Save(r.Context(), &rec, -1); err != nil {
 			return err
 		}
-		codec, err := ss.codecs.Codec(r.Context())
-		if err != nil {
+		if err = ss.codec.Refresh(r.Context()); err != nil {
 			return err
 		}
-		encoded, err := codec.Encode(session.Name(), sid)
+		encoded, err := ss.codec.Encode(session.Name(), sid)
 		if err != nil {
 			return err
 		}
