@@ -14,17 +14,17 @@ import (
 
 // unversionedRecord represents an unversioned record in the DynamoDB table
 type unversionedRecord struct {
-	ID         string                 `dynamodbav:"id"`
-	Values     map[string]interface{} `dynamodbav:"values"`
-	Expiration int64                  `dynamodbav:"expiration_time"`
+	ID        string                 `dynamodbav:"id"`
+	Values    map[string]interface{} `dynamodbav:"values"`
+	ExpiresAt int64                  `dynamodbav:"expires_at"`
 }
 
 // versionedRecord represents a versioned record in the DynamoDB table
 type versionedRecord struct {
-	ID         string                 `dynamodbav:"id"`
-	Version    int64                  `dynamodbav:"version"`
-	Values     map[string]interface{} `dynamodbav:"values"`
-	Expiration int64                  `dynamodbav:"expiration_time"`
+	ID        string                 `dynamodbav:"id"`
+	Version   int64                  `dynamodbav:"version"`
+	Values    map[string]interface{} `dynamodbav:"values"`
+	ExpiresAt int64                  `dynamodbav:"expires_at"`
 }
 
 // Provider provides storage for sessions using an AWS DynamoDB table.
@@ -54,10 +54,6 @@ func (db *Provider) CreateTable(readCapacityUnits, writeCapacityUnits int64) err
 				AttributeName: aws.String("id"),
 				AttributeType: aws.String("S"),
 			},
-			// {
-			// 	AttributeName: aws.String("expiration_time"),
-			// 	AttributeType: aws.String("N"),
-			// },
 		},
 		KeySchema: []*dynamodb.KeySchemaElement{
 			{
@@ -80,7 +76,7 @@ func (db *Provider) CreateTable(readCapacityUnits, writeCapacityUnits int64) err
 	_, err = db.dynamodb.UpdateTimeToLive(&dynamodb.UpdateTimeToLiveInput{
 		TableName: aws.String(db.tableName),
 		TimeToLiveSpecification: &dynamodb.TimeToLiveSpecification{
-			AttributeName: aws.String("expiration_time"),
+			AttributeName: aws.String("expires_at"),
 			Enabled:       aws.Bool(true),
 		},
 	})
@@ -140,15 +136,15 @@ func (db *Provider) Fetch(ctx context.Context, id string) (*storage.Record, erro
 		Version: rec.Version,
 		Format:  format,
 		Data:    data,
-		Expires: time.Unix(rec.Expiration, 0),
+		Expires: time.Unix(rec.ExpiresAt, 0),
 	}, nil
 }
 
 func (db *Provider) Save(ctx context.Context, rec *storage.Record, oldVersion int64) error {
 	if oldVersion < 0 {
 		uvrec := unversionedRecord{
-			ID:         rec.ID,
-			Expiration: rec.Expires.Unix(),
+			ID:        rec.ID,
+			ExpiresAt: rec.Expires.Unix(),
 			Values: map[string]interface{}{
 				"Data":   rec.Data,
 				"Format": rec.Format,
@@ -157,9 +153,9 @@ func (db *Provider) Save(ctx context.Context, rec *storage.Record, oldVersion in
 		return db.putUnversioned(ctx, &uvrec)
 	}
 	vrec := versionedRecord{
-		ID:         rec.ID,
-		Version:    rec.Version,
-		Expiration: rec.Expires.Unix(),
+		ID:        rec.ID,
+		Version:   rec.Version,
+		ExpiresAt: rec.Expires.Unix(),
 		Values: map[string]interface{}{
 			"Data":   rec.Data,
 			"Format": rec.Format,

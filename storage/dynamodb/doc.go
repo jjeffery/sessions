@@ -4,5 +4,5 @@
 //
 //  Hash Key: name="id" type="S"
 //  Sort Key: none
-//  Time to Live Attribute: name="expiration_time"
+//  Time to Live Attribute: name="expires_at"
 package dynamodb

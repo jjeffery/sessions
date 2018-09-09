@@ -2,19 +2,16 @@ package sessionstore
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/gob"
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
-	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 	"github.com/jjeffery/errors"
-	"github.com/jjeffery/sessions/internal/secret"
+	"github.com/jjeffery/sessions/codecstore"
 	"github.com/jjeffery/sessions/storage"
 )
 
@@ -55,14 +52,6 @@ func parseSessionID(str string) (sessionID, error) {
 	return sid, nil
 }
 
-// secretSafe is an interface designed for testing: the implementation
-// in sessionStore can be replaced during a unit test if required.
-type secretSafe interface {
-	RefreshIn() time.Duration
-	Refresh(context.Context) error
-	Codecs() (encode []securecookie.Codec, decode []securecookie.Codec)
-}
-
 // Store implements the Gorilla Sessions sessions.Store interface for persistence
 // of HTTP session data.
 //
@@ -73,13 +62,7 @@ type Store struct {
 	appid   string
 	options sessions.Options
 	db      storage.Provider
-	safe    secretSafe
-
-	rw struct {
-		mutex  sync.RWMutex
-		encode []securecookie.Codec // contains current codecs only
-		decode []securecookie.Codec // contains current and future codecs
-	}
+	codecs  *codecstore.Store
 }
 
 // New creates a new store suitable for persisting sessions. Session
@@ -93,7 +76,7 @@ func New(db storage.Provider, options sessions.Options, appid string) *Store {
 		appid:   appid,
 		options: options,
 		db:      db,
-		safe:    secret.New(db, time.Duration(options.MaxAge)*time.Second, appid),
+		codecs:  codecstore.New(db, time.Duration(options.MaxAge)*time.Second, appid),
 	}
 }
 
@@ -122,13 +105,13 @@ func (ss *Store) New(r *http.Request, name string) (*sessions.Session, error) {
 		err = errors.Wrap(err, "cannot obtain cookie")
 		return session, err
 	}
-	_, decode, err := ss.codecs(r.Context())
+	codec, err := ss.codecs.Codec(r.Context())
 	if err != nil {
-		err = errors.Wrap(err, "cannot get codecs")
+		err = errors.Wrap(err, "cannot get codec")
 		return session, err
 	}
 	var sid sessionID
-	err = securecookie.DecodeMulti(name, c.Value, &sid, decode...)
+	err = codec.Decode(name, c.Value, &sid)
 	if err != nil {
 		err = errors.Wrap(err, "cannot decode cookie")
 		return session, err
@@ -184,36 +167,17 @@ func (ss *Store) Save(r *http.Request, w http.ResponseWriter, session *sessions.
 		if err := ss.db.Save(r.Context(), &rec, -1); err != nil {
 			return err
 		}
-		encode, _, err := ss.codecs(r.Context())
+		codec, err := ss.codecs.Codec(r.Context())
 		if err != nil {
 			return err
 		}
-		encoded, err := securecookie.EncodeMulti(session.Name(), sid, encode...)
+		encoded, err := codec.Encode(session.Name(), sid)
 		if err != nil {
 			return err
 		}
 		http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, session.Options))
 	}
 	return nil
-}
-
-func (ss *Store) codecs(ctx context.Context) (encode, decode []securecookie.Codec, err error) {
-	for ss.safe.RefreshIn() <= 0 {
-		if err := ss.safe.Refresh(ctx); err != nil {
-			return nil, nil, err
-		}
-		encode, decode = ss.safe.Codecs()
-		ss.rw.mutex.Lock()
-		ss.rw.encode = encode
-		ss.rw.decode = decode
-		ss.rw.mutex.Unlock()
-	}
-	ss.rw.mutex.RLock()
-	encode = ss.rw.encode
-	decode = ss.rw.decode
-	ss.rw.mutex.RUnlock()
-
-	return encode, decode, nil
 }
 
 // recordID returns the unique ID for saving a session record to persistent storage

@@ -12,7 +12,7 @@ This repository provides Go packages that supplement the popular
 Package [sessionstore](https://godoc.org/github.com/jjeffery/sessions/sessionstore)
 provides a session store implementation that persists session information using
 a simple [storage interface](https://godoc.org/github.com/jjeffery/sessions/storage#Provider).
-Secret key material used for signing and encrypting
+Secret keying material used for signing and encrypting
 [secure cookies](https://github.com/gorilla/securecookie) is stored using the same storage provider.
 The secret keying material is automatically generated and is rotated regularly.
 
