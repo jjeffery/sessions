@@ -110,7 +110,7 @@ func (db *Provider) Fetch(ctx context.Context, id string) (*storage.Record, erro
 		rec.Version = version.Int64
 	}
 	if expires.Valid {
-		rec.Expires = expires.Time
+		rec.ExpiresAt = expires.Time
 	}
 	if format.Valid {
 		rec.Format = format.String
@@ -146,9 +146,9 @@ func (db *Provider) saveUnversioned(ctx context.Context, rec *storage.Record) er
 	}
 
 	var expires nullTime
-	if !rec.Expires.IsZero() {
+	if !rec.ExpiresAt.IsZero() {
 		expires.Valid = true
-		expires.Time = rec.Expires
+		expires.Time = rec.ExpiresAt
 	}
 	queryFmt := `insert into %s(id, expires_at, format, data) values($1, $2, $3, $4)` +
 		` on conflict(id) do update set version = null, expires_at = $2, format = $3, data = $4`
@@ -163,7 +163,6 @@ func (db *Provider) saveUnversioned(ctx context.Context, rec *storage.Record) er
 	return nil
 }
 
-// PutVersioned implements the storage.Provider interface.
 func (db *Provider) saveVersioned(ctx context.Context, rec *storage.Record, oldVersion int64) error {
 	errors := errors.With("id", rec.ID, "table", db.tableName)
 	tx, err := db.db.BeginTx(ctx, nil)
@@ -179,9 +178,9 @@ func (db *Provider) saveVersioned(ctx context.Context, rec *storage.Record, oldV
 	}
 
 	var expires nullTime
-	if !rec.Expires.IsZero() {
+	if !rec.ExpiresAt.IsZero() {
 		expires.Valid = true
-		expires.Time = rec.Expires
+		expires.Time = rec.ExpiresAt
 	}
 
 	var rowCount int64

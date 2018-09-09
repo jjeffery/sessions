@@ -24,10 +24,10 @@ func conflictTest(t *testing.T, db storage.Provider) {
 	var saveRec storage.Record
 
 	saveRec = storage.Record{
-		ID:      id,
-		Format:  "anything",
-		Data:    []byte{0},
-		Expires: time.Now().Add(time.Hour * 12),
+		ID:        id,
+		Format:    "anything",
+		Data:      []byte{0},
+		ExpiresAt: time.Now().Add(time.Hour * 12),
 	}
 	for oldVersion := int64(0); oldVersion < 3; oldVersion++ {
 		saveRec.Version = oldVersion + 1
@@ -104,17 +104,17 @@ func raceTest1(t *testing.T, db storage.Provider, instance int) {
 	ctx := context.Background()
 	const id = "record-id-for-race-testing"
 	const format = "testing"
-	expires := time.Now().Add(time.Hour * 12)
+	expiresAt := time.Now().Add(time.Hour * 12)
 	data := make([]byte, 256)
 
 	for version := int64(0); version < loopCount; version++ {
 		data[0] = byte(version % 256)
 		rec := &storage.Record{
-			ID:      id,
-			Version: version + 1,
-			Expires: expires,
-			Format:  format,
-			Data:    data,
+			ID:        id,
+			Version:   version + 1,
+			ExpiresAt: expiresAt,
+			Format:    format,
+			Data:      data,
 		}
 		err := db.Save(ctx, rec, version)
 		if err == nil {
@@ -142,10 +142,10 @@ func raceTest2(t *testing.T, db storage.Provider, instance int, add bool) {
 		id := fmt.Sprintf("record-%d-%d", instance, i)
 		if add {
 			rec := storage.Record{
-				ID:      id,
-				Format:  "test",
-				Expires: time.Now().Add(12 * time.Hour),
-				Data:    []byte{byte(i % 256)},
+				ID:        id,
+				Format:    "test",
+				ExpiresAt: time.Now().Add(12 * time.Hour),
+				Data:      []byte{byte(i % 256)},
 			}
 			if err := db.Save(ctx, &rec, -1); err != nil {
 				t.Fatalf("%d: %d: %v", instance, i, err)

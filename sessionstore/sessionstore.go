@@ -155,9 +155,9 @@ func (ss *Store) Save(r *http.Request, w http.ResponseWriter, session *sessions.
 			expiresIn = time.Hour * 24
 		}
 		rec := storage.Record{
-			ID:      ss.recordID(session),
-			Format:  "gob",
-			Expires: nowFunc().Add(expiresIn),
+			ID:        ss.recordID(session),
+			Format:    "gob",
+			ExpiresAt: nowFunc().Add(expiresIn),
 		}
 		rec.Data, err = encodeSession(session)
 		if err != nil {

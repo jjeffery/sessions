@@ -109,7 +109,7 @@ func (c *Codec) Decode(name, value string, dst interface{}) error {
 //
 // It is not mandatory to call Refresh, as the codec will update itself if
 // necessary during each call to Encode or Decode. The difference is Request
-// receives a context and will return immediately if the context is canceled.
+// accepts a context and will return immediately if the context is canceled.
 func (c *Codec) Refresh(ctx context.Context) error {
 	_, err := c.immutableCodec(ctx)
 	return err
@@ -244,7 +244,7 @@ func (c *Codec) fetchSecrets(ctx context.Context) (*secretsT, error) {
 		if err != nil {
 			return nil, err
 		}
-		rec.Expires = timeNowFunc().Add(c.rotationPeriod() * 4)
+		rec.ExpiresAt = timeNowFunc().Add(c.rotationPeriod() * 4)
 		rec.ID = secretID
 		err := c.DB.Save(ctx, rec, oldVersion)
 		if err == storage.ErrVersionConflict {

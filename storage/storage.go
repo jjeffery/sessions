@@ -22,11 +22,11 @@ var (
 
 // Record contains information that is persisted to the Provider.
 type Record struct {
-	ID      string    // unique identifer, maximum length 255 bytes
-	Version int64     // optimistic locking version, must be > 0
-	Expires time.Time // time that this record expires, and can be deleted
-	Format  string    // arbitrary string that can be used to interpret the contents of Data
-	Data    []byte    // opaque data to be stored
+	ID        string    // unique identifer, maximum length 255 bytes
+	Version   int64     // optimistic locking version, must be > 0
+	ExpiresAt time.Time // time that this record expires, and can be deleted
+	Format    string    // arbitrary string that can be used to interpret the contents of Data
+	Data      []byte    // opaque data to be stored
 }
 
 // Provider is the interface used by the session store for persisting session information

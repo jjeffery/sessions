@@ -39,7 +39,7 @@ func (db *Provider) Fetch(ctx context.Context, id string) (*storage.Record, erro
 	db.mutex.RLock()
 	rec := cloneRecord(db.m[id])
 	db.mutex.RUnlock()
-	if rec != nil && rec.Expires.Before(db.TimeNow()) {
+	if rec != nil && rec.ExpiresAt.Before(db.TimeNow()) {
 		db.Delete(ctx, rec.ID)
 		rec = nil
 	}

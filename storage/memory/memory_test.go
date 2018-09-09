@@ -19,7 +19,7 @@ func TestMemoryDB(t *testing.T) {
 		return time.Date(2999, 1, 1, 0, 0, 0, 0, time.UTC)
 	})
 
-	if err := db.Save(ctx, &storage.Record{ID: "XXX", Expires: time.Unix(0, 0)}, -1); err != nil {
+	if err := db.Save(ctx, &storage.Record{ID: "XXX", ExpiresAt: time.Unix(0, 0)}, -1); err != nil {
 		t.Fatal(err)
 	}
 

@@ -25,13 +25,13 @@ func TestPurge(t *testing.T) {
 	wantNoError(t, stg.DropTable())
 	wantNoError(t, stg.CreateTable())
 	rec := storage.Record{
-		ID:      "xxx",
-		Expires: time.Now().Add(-time.Second),
+		ID:        "xxx",
+		ExpiresAt: time.Now().Add(-time.Second),
 	}
 	err := stg.Save(ctx, &rec, -1)
 	wantNoError(t, err)
 	rec.ID = "YYY"
-	rec.Expires = time.Now().Add(time.Second * 10)
+	rec.ExpiresAt = time.Now().Add(time.Second * 10)
 	err = stg.Save(ctx, &rec, -1)
 	wantNoError(t, err)
 

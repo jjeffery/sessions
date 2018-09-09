@@ -132,11 +132,11 @@ func (db *Provider) Fetch(ctx context.Context, id string) (*storage.Record, erro
 	data, _ := rec.Values["Data"].([]byte)
 	format, _ := rec.Values["Format"].(string)
 	return &storage.Record{
-		ID:      rec.ID,
-		Version: rec.Version,
-		Format:  format,
-		Data:    data,
-		Expires: time.Unix(rec.ExpiresAt, 0),
+		ID:        rec.ID,
+		Version:   rec.Version,
+		Format:    format,
+		Data:      data,
+		ExpiresAt: time.Unix(rec.ExpiresAt, 0),
 	}, nil
 }
 
@@ -144,7 +144,7 @@ func (db *Provider) Save(ctx context.Context, rec *storage.Record, oldVersion in
 	if oldVersion < 0 {
 		uvrec := unversionedRecord{
 			ID:        rec.ID,
-			ExpiresAt: rec.Expires.Unix(),
+			ExpiresAt: rec.ExpiresAt.Unix(),
 			Values: map[string]interface{}{
 				"Data":   rec.Data,
 				"Format": rec.Format,
@@ -155,7 +155,7 @@ func (db *Provider) Save(ctx context.Context, rec *storage.Record, oldVersion in
 	vrec := versionedRecord{
 		ID:        rec.ID,
 		Version:   rec.Version,
-		ExpiresAt: rec.Expires.Unix(),
+		ExpiresAt: rec.ExpiresAt.Unix(),
 		Values: map[string]interface{}{
 			"Data":   rec.Data,
 			"Format": rec.Format,
