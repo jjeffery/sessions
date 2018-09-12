@@ -58,11 +58,13 @@ func parseSessionID(str string) (sessionID, error) {
 // The Store automatically generates and persists random secret keying material
 // that is used for generating the keys used to sign and encrypt the secure session
 // cookies. The secret keying material is regularly rotated.
+//
+// While all fields are public, they should not be modified once the store is in use.
 type Store struct {
-	appid   string
-	options sessions.Options
-	db      storage.Provider
-	codec   *codec.Codec
+	DB      storage.Provider
+	Options sessions.Options
+	AppID   string // set if multiple apps share the same storage provider
+	Codec   *codec.Codec
 }
 
 // New creates a new store suitable for persisting sessions. Session
@@ -73,13 +75,16 @@ type Store struct {
 // rotate their own, independent secret keying material.
 func New(db storage.Provider, options sessions.Options, appid string) *Store {
 	return &Store{
-		appid:   appid,
-		options: options,
-		db:      db,
-		codec: &codec.Codec{
-			DB:       db,
+		DB:      db,
+		Options: options,
+		AppID:   appid,
+		Codec: &codec.Codec{
+			DB: db,
+			// This could be zero: set this directly if you want to
+			// specify a max age for cookies, but want to leave max-age=0
+			// in the cookie.
 			MaxAge:   time.Duration(options.MaxAge) * time.Second,
-			SecretID: appid + "secret",
+			SecretID: appid + "_secrets",
 		},
 	}
 }
@@ -96,7 +101,7 @@ func (ss *Store) Get(r *http.Request, name string) (*sessions.Session, error) {
 func (ss *Store) New(r *http.Request, name string) (*sessions.Session, error) {
 	session := sessions.NewSession(ss, name)
 	// make a copy
-	options := ss.options
+	options := ss.Options
 	session.Options = &options
 	session.IsNew = true
 	c, err := r.Cookie(name)
@@ -109,18 +114,18 @@ func (ss *Store) New(r *http.Request, name string) (*sessions.Session, error) {
 		err = errors.Wrap(err, "cannot obtain cookie")
 		return session, err
 	}
-	if err := ss.codec.Refresh(r.Context()); err != nil {
+	if err := ss.Codec.Refresh(r.Context()); err != nil {
 		err = errors.Wrap(err, "cannot refresh codec")
 		return session, err
 	}
 	var sid sessionID
-	err = ss.codec.Decode(name, c.Value, &sid)
+	err = ss.Codec.Decode(name, c.Value, &sid)
 	if err != nil {
 		err = errors.Wrap(err, "cannot decode cookie")
 		return session, err
 	}
 	session.ID = sid.String()
-	rec, err := ss.db.Fetch(r.Context(), ss.recordID(session))
+	rec, err := ss.DB.Fetch(r.Context(), ss.recordID(session))
 	if err == nil && rec != nil {
 		session.IsNew = false //  session data exists, so not new
 		if rec.Data != nil {
@@ -139,7 +144,7 @@ func (ss *Store) Save(r *http.Request, w http.ResponseWriter, session *sessions.
 	if session.Options.MaxAge < 0 {
 		http.SetCookie(w, sessions.NewCookie(session.Name(), "", session.Options))
 		if session.ID != "" {
-			if err := ss.db.Delete(r.Context(), ss.recordID(session)); err != nil {
+			if err := ss.DB.Delete(r.Context(), ss.recordID(session)); err != nil {
 				return err
 			}
 		}
@@ -167,13 +172,13 @@ func (ss *Store) Save(r *http.Request, w http.ResponseWriter, session *sessions.
 		if err != nil {
 			return err
 		}
-		if err := ss.db.Save(r.Context(), &rec, -1); err != nil {
+		if err := ss.DB.Save(r.Context(), &rec, -1); err != nil {
 			return err
 		}
-		if err = ss.codec.Refresh(r.Context()); err != nil {
+		if err = ss.Codec.Refresh(r.Context()); err != nil {
 			return err
 		}
-		encoded, err := ss.codec.Encode(session.Name(), sid)
+		encoded, err := ss.Codec.Encode(session.Name(), sid)
 		if err != nil {
 			return err
 		}
@@ -184,10 +189,10 @@ func (ss *Store) Save(r *http.Request, w http.ResponseWriter, session *sessions.
 
 // recordID returns the unique ID for saving a session record to persistent storage
 func (ss *Store) recordID(session *sessions.Session) string {
-	if ss.appid == "" {
+	if ss.AppID == "" {
 		return session.ID
 	}
-	return ss.appid + "-" + session.ID
+	return ss.AppID + "-" + session.ID
 }
 
 func encodeSession(session *sessions.Session) ([]byte, error) {
