@@ -3,6 +3,7 @@ language: go
 # Will compile on go1.9, but this config fails because go1.9 does not
 # support the test script, see below.
 go:
+  - "1.11"
   - "1.10"
 
 services:
@@ -21,7 +22,6 @@ install:
   - go get github.com/gorilla/sessions
   - go get github.com/jjeffery/errors
   - go get github.com/lib/pq
-  - go get github.com/mattn/goveralls
   - go get golang.org/x/crypto/hkdf
   - go get golang.org/x/crypto/nacl/secretbox
   # install aws dynamodb-local
@@ -42,7 +42,6 @@ before_script:
 script:
   # this does not work on go1.9 and below
   - go test -race -coverprofile=coverage.out -covermode=atomic ./...
-  - go test -race ./...
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
