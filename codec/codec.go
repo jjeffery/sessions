@@ -205,20 +205,6 @@ func (c *Codec) newImmutableCodec(ctx context.Context) (*immutableCodec, error) 
 	return codec, nil
 }
 
-// newKeyPair takes a secret and prepares two keys using
-// the HKDF key derivation function.
-func newKeyPair(secret []byte) ([]byte, []byte) {
-	hash := sha256.New
-	kdf := hkdf.New(hash, secret, nil, nil)
-
-	hashKey := make([]byte, 32)
-	encryptKey := make([]byte, 32)
-	kdf.Read(hashKey[:])
-	kdf.Read(encryptKey[:])
-
-	return hashKey, encryptKey
-}
-
 // fetchSecrets and, if necessary, rotate the secrets from  the secret store.
 func (c *Codec) fetchSecrets(ctx context.Context, now time.Time) (*secretsT, error) {
 	if c.DB == nil {
