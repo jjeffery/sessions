@@ -18,7 +18,7 @@ The secret keying material is automatically generated and is rotated regularly.
 
 Package [codec](https://godoc.org/github.com/jjeffery/sessions/codec)
 provides the codec implementation used by the sessionstore package. It uses secret keying material
-for generating encryption and hash keys for secure cookies. The secret keying material is randomly
+for encrypting and authenticating secure cookies. The secret keying material is randomly
 generated, persisted to storage, and rotated regularly. This package can be used independently of
 the sessionstore package. For example, it can be used to provide the codec for the
 [Gorilla CookieStore](https://godoc.org/github.com/gorilla/sessions#CookieStore).
