@@ -13,19 +13,26 @@ import (
 )
 
 func TestRotatePeriod(t *testing.T) {
-	codec := New(memory.New(), 0, "")
-	if got, want := codec.RotationPeriod, DefaultRotationPeriod; got != want {
+	codec := Codec{
+		DB: memory.New(),
+	}
+	if got, want := codec.rotationPeriod(), DefaultMaxAge; got != want {
 		t.Fatalf("got=%v, want=%v", got, want)
 	}
-	codec = New(memory.New(), time.Second*30, "")
-	if got, want := codec.RotationPeriod, MinimumRotationPeriod; got != want {
+	codec = Codec{
+		DB:             memory.New(),
+		RotationPeriod: time.Second * 30,
+	}
+	if got, want := codec.rotationPeriod(), MinimumRotationPeriod; got != want {
 		t.Fatalf("got=%v, want=%v", got, want)
 	}
 }
 
 func TestLength(t *testing.T) {
-	db := memory.New()
-	codec := New(db, time.Hour, "")
+	codec := &Codec{
+		DB:     memory.New(),
+		MaxAge: time.Hour,
+	}
 
 	message := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
 	cipherText, err := codec.Encode("really-long-cookie-name", message)
@@ -40,7 +47,10 @@ func TestEncodeDecode(t *testing.T) {
 	}
 	db := memory.New().WithTimeNow(timeNowFunc)
 	ctx := context.Background()
-	codec := New(db, time.Hour, "")
+	codec := Codec{
+		DB:     db,
+		MaxAge: time.Hour,
+	}
 
 	cookies := make(map[string]time.Time)
 
@@ -83,7 +93,10 @@ func TestRace(t *testing.T) {
 	}
 	db := memory.New().WithTimeNow(timeNowFunc)
 	ctx := context.Background()
-	codec := New(db, time.Hour, "")
+	codec := Codec{
+		DB:     db,
+		MaxAge: time.Hour,
+	}
 
 	var wg sync.WaitGroup
 
@@ -124,7 +137,7 @@ func TestCodec(t *testing.T) {
 	db := memory.New().WithTimeNow(timeNowFunc)
 
 	ctx := context.Background()
-	codec := New(db, 0, "")
+	codec := &Codec{DB: db}
 
 	err := codec.Refresh(ctx)
 	wantNilError(t, err)
@@ -144,7 +157,7 @@ func TestCodec(t *testing.T) {
 	wantCodecLength(t, codec.codec.encoders, 1)
 	wantCodecLength(t, codec.codec.decoders, 1)
 
-	fakeNow = fakeNow.Add(codec.RotationPeriod)
+	fakeNow = fakeNow.Add(codec.rotationPeriod())
 	err = codec.Refresh(ctx)
 	wantNilError(t, err)
 	wantCodecLength(t, codec.codec.encoders, 1)
@@ -158,7 +171,7 @@ func TestCodec(t *testing.T) {
 	wantCodecLength(t, codec.codec.encoders, 2)
 	wantCodecLength(t, codec.codec.decoders, 2)
 
-	fakeNow = fakeNow.Add(codec.RotationPeriod + time.Millisecond)
+	fakeNow = fakeNow.Add(codec.rotationPeriod() + time.Millisecond)
 	err = codec.Refresh(ctx)
 	wantNilError(t, err)
 	wantCodecLength(t, codec.codec.encoders, 2)

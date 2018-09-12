@@ -26,9 +26,9 @@ import (
 )
 
 const (
-	// DefaultRotationPeriod is the default time period for rotation
-	// of secrets, and is used if zero is provided as the rotation period.
-	DefaultRotationPeriod = 30 * 24 * time.Hour
+	// DefaultMaxAge is the default maximum age for cookies, and is used
+	// if zero is provided as the maximum age.
+	DefaultMaxAge = 30 * 24 * time.Hour
 
 	// MinimumRotationPeriod is the minimum time duration between rotating secrets.
 	MinimumRotationPeriod = 15 * time.Minute
@@ -46,48 +46,43 @@ var (
 	// randReadFunc populates a byte array with random data, and can be
 	// replaced during testing
 	randReadFunc = rand.Read
+
+	// defaultSerializer is the serializer used for encoding cookie values if
+	// Codec.Serializer is nil.
+	defaultSerializer = &securecookie.GobEncoder{}
 )
 
 // Codec implements the securecookie.Codec interface and can encrypt and decrypt
 // secure cookies.
 //
-// It also is responsble for generating, persisting and rotating the secret keys
-// used for verifying and encrypting the secure cookies.
+// It also generates, persists and rotates the secret key material used for
+// verifying and encrypting the secure cookies. For this reason, the storage provider
+// (DB) field must be set.
+//
+// The MaxAge field specifies the maximum age for a cookie. Any cookie older than this
+// is invalid. If zero is passed as the maximum age, then the default maximum age is
+// used.
+//
+// The rotation period is the time duration between key rotation. If zero is passed
+// as the rotation period, then the rotation period is deemed to be the same as the
+// maximum age. If the rotation period is significantly smaller than the maximum age,
+// there will be more overhead decrypting cookies, so unless there is good reason
+// to do so, leave the rotation period at its default value.
+//
+// The serializer is used to serialize the cookie contents. If not specified then
+// the default (GOB) encoder is used.
+//
+// The secret ID is used as the primary key for persisting the secret keying material to
+// the db storage. If a blank string is supplied then a default value ("secret") is used.
 type Codec struct {
 	DB             storage.Provider
+	MaxAge         time.Duration
 	RotationPeriod time.Duration
 	Serializer     Serializer
 	SecretID       string
 
 	mutex sync.RWMutex
 	codec *immutableCodec
-}
-
-// New returns a new codec which encrypts and decrypts secure cookies. It also generates,
-// persists and rotates secret keying material.
-//
-// The rotation period is the time duration between key rotation, and should be set to be
-// at least the max-age of the cookie. If zero is passed as the rotation period, then the
-// default rotation period value is used.
-//
-// The secret ID is used as the primary key for persisting the secret keying material to
-// the db storage. If a blank string is supplied then a default value ("secret") is used.
-func New(db storage.Provider, rotationPeriod time.Duration, secretID string) *Codec {
-	if rotationPeriod <= 0 {
-		rotationPeriod = DefaultRotationPeriod
-	}
-	if rotationPeriod < MinimumRotationPeriod {
-		rotationPeriod = MinimumRotationPeriod
-	}
-	if secretID == "" {
-		secretID = "secret"
-	}
-
-	return &Codec{
-		DB:             db,
-		RotationPeriod: rotationPeriod,
-		SecretID:       secretID,
-	}
 }
 
 // Encode implements the securecookie.Codec interface.
@@ -112,17 +107,25 @@ func (c *Codec) Decode(name, value string, dst interface{}) error {
 // if necessary.
 //
 // It is not mandatory to call Refresh, as the codec will update itself if
-// necessary during each call to Encode or Decode. The difference is Request
+// necessary during each call to Encode or Decode. The difference is Refresh
 // accepts a context and will return immediately if the context is canceled.
 func (c *Codec) Refresh(ctx context.Context) error {
 	_, err := c.immutableCodec(ctx)
 	return err
 }
 
+func (c *Codec) maxAge() time.Duration {
+	maxAge := c.MaxAge
+	if maxAge <= 0 {
+		maxAge = DefaultMaxAge
+	}
+	return maxAge
+}
+
 func (c *Codec) rotationPeriod() time.Duration {
 	rotationPeriod := c.RotationPeriod
 	if rotationPeriod <= 0 {
-		rotationPeriod = DefaultRotationPeriod
+		rotationPeriod = c.maxAge()
 	}
 	if rotationPeriod < MinimumRotationPeriod {
 		rotationPeriod = MinimumRotationPeriod
@@ -182,7 +185,7 @@ func (c *Codec) newImmutableCodec(ctx context.Context) (*immutableCodec, error) 
 	}
 
 	// nextRotation is the time to rotate the secret keying material
-	nextRotation := time.Unix(cb.Secrets[0].StartAt, 0).Add(c.RotationPeriod)
+	nextRotation := time.Unix(cb.Secrets[0].StartAt, 0).Add(c.rotationPeriod())
 
 	// nextRefresh is the time to perform a regular check
 	nextRefresh := now.Add(MinimumRotationPeriod)
@@ -235,7 +238,7 @@ func (c *Codec) fetchSecrets(ctx context.Context, now time.Time) (*secretsT, err
 			return nil, err
 		}
 	}
-	modified, err := cb.rotate(now, c.rotationPeriod())
+	modified, err := cb.rotate(now, c.rotationPeriod(), c.maxAge())
 	if err != nil {
 		return nil, err
 	}
@@ -310,14 +313,15 @@ func (ss *secretsT) unmarshal(format string, data []byte) error {
 }
 
 // rotate adds a new secret to the list, and removes any obsolete secrets.
-func (ss *secretsT) rotate(now time.Time, rotationPeriod time.Duration) (modified bool, err error) {
+func (ss *secretsT) rotate(now time.Time, rotationPeriod time.Duration, maxAge time.Duration) (modified bool, err error) {
 	rpSecs := int64(rotationPeriod.Seconds())
+	maxAgeSecs := int64(maxAge.Seconds())
 
 	// Remove any obsolete secrets, leaving at least one.
 	// A secret is obsolete if it is older than the first secret older
-	// than the rotation period. (Read that again, slowly).
+	// than the maximum age. (Read that again, slowly).
 	{
-		before := now.Unix() - rpSecs
+		before := now.Unix() - maxAgeSecs
 		for i := 0; i < len(ss.Secrets); i++ {
 			secret := ss.Secrets[i]
 			if secret.StartAt < before {
@@ -421,10 +425,6 @@ type naclCodec struct {
 	MaxAge         time.Duration
 }
 
-var (
-	defaultSerializer = &securecookie.GobEncoder{}
-)
-
 func (sc *naclCodec) Encode(name string, value interface{}) (string, error) {
 	serializer := sc.Serializer
 	if serializer == nil {
@@ -482,10 +482,11 @@ func (sc *naclCodec) Decode(name, value string, dst interface{}) error {
 	}
 
 	unixTimestamp := int64(binary.BigEndian.Uint64(message))
+	message = message[8:]
 	timestamp := time.Unix(unixTimestamp, 0)
 	maxAge := sc.MaxAge
 	if maxAge <= 0 {
-		maxAge = DefaultRotationPeriod
+		maxAge = DefaultMaxAge
 	}
 	if timestamp.Add(maxAge).Before(timeNowFunc()) {
 		return decodeError("cookie expired")
@@ -497,6 +498,8 @@ func (sc *naclCodec) Decode(name, value string, dst interface{}) error {
 	return serializer.Deserialize(message, dst)
 }
 
+// decodeError provides some level of compatibility with securecookie by
+// providing the IsDecode method.
 type decodeError string
 
 func (e decodeError) IsDecode() bool {

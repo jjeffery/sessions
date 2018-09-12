@@ -76,7 +76,11 @@ func New(db storage.Provider, options sessions.Options, appid string) *Store {
 		appid:   appid,
 		options: options,
 		db:      db,
-		codec:   codec.New(db, time.Duration(options.MaxAge)*time.Second, appid),
+		codec: &codec.Codec{
+			DB:       db,
+			MaxAge:   time.Duration(options.MaxAge) * time.Second,
+			SecretID: appid + "secret",
+		},
 	}
 }
 
