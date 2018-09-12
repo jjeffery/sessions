@@ -171,7 +171,7 @@ func TestCodec(t *testing.T) {
 	wantCodecLength(t, codec.codec.encoders, 2)
 	wantCodecLength(t, codec.codec.decoders, 2)
 
-	fakeNow = fakeNow.Add(codec.rotationPeriod() + time.Millisecond)
+	fakeNow = fakeNow.Add(codec.rotationPeriod() + time.Millisecond - MinimumRotationPeriod)
 	err = codec.Refresh(ctx)
 	wantNilError(t, err)
 	wantCodecLength(t, codec.codec.encoders, 2)
@@ -180,8 +180,8 @@ func TestCodec(t *testing.T) {
 	fakeNow = fakeNow.Add(MinimumRotationPeriod + time.Millisecond)
 	err = codec.Refresh(ctx)
 	wantNilError(t, err)
-	wantCodecLength(t, codec.codec.encoders, 1)
-	wantCodecLength(t, codec.codec.decoders, 2)
+	wantCodecLength(t, codec.codec.encoders, 2)
+	wantCodecLength(t, codec.codec.decoders, 3)
 }
 
 func wantNilError(t *testing.T, err error) {

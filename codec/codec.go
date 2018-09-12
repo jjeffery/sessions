@@ -300,7 +300,8 @@ func (ss *secretsT) unmarshal(format string, data []byte) error {
 
 // rotate adds a new secret to the list, and removes any obsolete secrets.
 func (ss *secretsT) rotate(now time.Time, rotationPeriod time.Duration, maxAge time.Duration) (modified bool, err error) {
-	rpSecs := int64(rotationPeriod.Seconds())
+	rotationPeriodSecs := int64(rotationPeriod.Seconds())
+	minRotationPeriodSecs := int64(MinimumRotationPeriod.Seconds())
 	maxAgeSecs := int64(maxAge.Seconds())
 
 	// Remove any obsolete secrets, leaving at least one.
@@ -327,7 +328,7 @@ func (ss *secretsT) rotate(now time.Time, rotationPeriod time.Duration, maxAge t
 	} else {
 		// there is at least one secret, only need another if
 		// it is older than the rotation period
-		before := now.Unix() - rpSecs
+		before := now.Unix() - rotationPeriodSecs + minRotationPeriodSecs
 		keyRequired = ss.Secrets[0].StartAt < before
 	}
 
