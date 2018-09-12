@@ -412,8 +412,8 @@ type naclCodec struct {
 	MaxAge         time.Duration
 }
 
-func (sc *naclCodec) Encode(name string, value interface{}) (string, error) {
-	serializer := sc.Serializer
+func (nc *naclCodec) Encode(name string, value interface{}) (string, error) {
+	serializer := nc.Serializer
 	if serializer == nil {
 		serializer = defaultSerializer
 	}
@@ -436,7 +436,7 @@ func (sc *naclCodec) Encode(name string, value interface{}) (string, error) {
 	// This prevents cookie swapping without the overhead of including the name
 	// in the clear text.
 	hash := sha256.New
-	kdf := hkdf.New(hash, sc.KeyingMaterial[:], []byte(name), nil)
+	kdf := hkdf.New(hash, nc.KeyingMaterial[:], []byte(name), nil)
 	var key [32]byte
 	if _, err = kdf.Read(key[:]); err != nil {
 		return "", err
@@ -446,7 +446,7 @@ func (sc *naclCodec) Encode(name string, value interface{}) (string, error) {
 	return text, nil
 }
 
-func (sc *naclCodec) Decode(name, value string, dst interface{}) error {
+func (nc *naclCodec) Decode(name, value string, dst interface{}) error {
 	sealed, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
 		return decodeError("invalid cookie characters")
@@ -458,7 +458,7 @@ func (sc *naclCodec) Decode(name, value string, dst interface{}) error {
 	copy(nonce[:], sealed[:24])
 	box := sealed[24:]
 	hash := sha256.New
-	kdf := hkdf.New(hash, sc.KeyingMaterial[:], []byte(name), nil)
+	kdf := hkdf.New(hash, nc.KeyingMaterial[:], []byte(name), nil)
 	var key [32]byte
 	if _, err = kdf.Read(key[:]); err != nil {
 		return err
@@ -471,14 +471,14 @@ func (sc *naclCodec) Decode(name, value string, dst interface{}) error {
 	unixTimestamp := int64(binary.BigEndian.Uint64(message))
 	message = message[8:]
 	timestamp := time.Unix(unixTimestamp, 0)
-	maxAge := sc.MaxAge
+	maxAge := nc.MaxAge
 	if maxAge <= 0 {
 		maxAge = DefaultMaxAge
 	}
 	if timestamp.Add(maxAge).Before(timeNowFunc()) {
 		return decodeError("cookie expired")
 	}
-	serializer := sc.Serializer
+	serializer := nc.Serializer
 	if serializer == nil {
 		serializer = defaultSerializer
 	}
