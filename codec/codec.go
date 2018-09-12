@@ -485,12 +485,23 @@ func (nc *naclCodec) Decode(name, value string, dst interface{}) error {
 	return serializer.Deserialize(message, dst)
 }
 
-// decodeError provides some level of compatibility with securecookie by
-// providing the IsDecode method.
+// decodeError implements the securecookie.Error interface.
 type decodeError string
 
 func (e decodeError) IsDecode() bool {
 	return true
+}
+
+func (e decodeError) IsUsage() bool {
+	return false
+}
+
+func (e decodeError) IsInternal() bool {
+	return false
+}
+
+func (e decodeError) Cause() error {
+	return nil
 }
 
 func (e decodeError) Error() string {

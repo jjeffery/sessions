@@ -184,6 +184,45 @@ func TestCodec(t *testing.T) {
 	wantCodecLength(t, codec.codec.decoders, 3)
 }
 
+func TestExpired(t *testing.T) {
+	defer restoreStubs()
+	var fakeNow = time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
+	timeNowFunc = func() time.Time {
+		return fakeNow
+	}
+
+	codec := &Codec{
+		DB: memory.New().WithTimeNow(timeNowFunc),
+	}
+
+	text, err := codec.Encode("cookie", "data")
+	wantNilError(t, err)
+
+	fakeNow = fakeNow.Add(codec.maxAge() - time.Microsecond)
+
+	var value string
+	err = codec.Decode("cookie", text, &value)
+	wantNilError(t, err)
+
+	fakeNow = fakeNow.Add(2 * time.Microsecond)
+	err = codec.Decode("cookie", text, &value)
+	wantError(t, err)
+
+	if decode, ok := err.(securecookie.Error); !ok {
+		t.Fatalf("want decode error got %v", err)
+	} else {
+		if got, want := decode.IsDecode(), true; got != want {
+			t.Errorf("got=%v, want=%v", got, want)
+		}
+		if got, want := decode.IsInternal(), false; got != want {
+			t.Errorf("got=%v, want=%v", got, want)
+		}
+		if got, want := decode.IsUsage(), false; got != want {
+			t.Errorf("got=%v, want=%v", got, want)
+		}
+		wantNilError(t, decode.Cause())
+	}
+}
 func wantNilError(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
