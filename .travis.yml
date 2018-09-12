@@ -23,6 +23,7 @@ install:
   - go get github.com/lib/pq
   - go get github.com/mattn/goveralls
   - go get golang.org/x/crypto/hkdf
+  - go get golang.org/x/crypto/nacl/secretbox
   # install aws dynamodb-local
   - wget http://dynamodb-local.s3-website-us-west-2.amazonaws.com/dynamodb_local_latest.tar.gz -O /tmp/dynamodb_local_latest.tar.gz
   - mkdir -p $HOME/dynamodb-local

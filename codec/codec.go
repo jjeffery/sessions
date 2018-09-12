@@ -11,6 +11,8 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/gob"
 	"fmt"
 	"sync"
@@ -20,6 +22,7 @@ import (
 	"github.com/jjeffery/errors"
 	"github.com/jjeffery/sessions/storage"
 	"golang.org/x/crypto/hkdf"
+	"golang.org/x/crypto/nacl/secretbox"
 )
 
 const (
@@ -53,6 +56,7 @@ var (
 type Codec struct {
 	DB             storage.Provider
 	RotationPeriod time.Duration
+	Serializer     Serializer
 	SecretID       string
 
 	mutex sync.RWMutex
@@ -154,27 +158,28 @@ func (c *Codec) immutableCodec(ctx context.Context) (*immutableCodec, error) {
 func (c *Codec) newImmutableCodec(ctx context.Context) (*immutableCodec, error) {
 	now := timeNowFunc()
 
-	cb, err := c.fetchSecrets(ctx)
+	cb, err := c.fetchSecrets(ctx, now)
 	if err != nil {
 		return nil, err
 	}
 
 	nowUnix := now.Unix()
 
-	encodeKeyPairs := make([][]byte, 0, len(cb.Secrets)*2)
-	decodeKeyPairs := make([][]byte, 0, len(cb.Secrets)*2)
+	encoders := make([]securecookie.Codec, 0, len(cb.Secrets)*2)
+	decoders := make([]securecookie.Codec, 0, len(cb.Secrets)*2)
 	for _, secret := range cb.Secrets {
-		k1, k2 := newKeyPair(secret.KeyingMaterial[:])
-		decodeKeyPairs = append(decodeKeyPairs, k1, k2)
+		codec := &naclCodec{
+			KeyingMaterial: secret.KeyingMaterial,
+			Serializer:     c.Serializer,
+		}
+		decoders = append(decoders, codec)
 		if secret.StartAt <= nowUnix {
 			// only use current secrets for encode codecs
 			// because other hosts may not have downloaded
 			// the new secrets yet
-			encodeKeyPairs = append(encodeKeyPairs, k1, k2)
+			encoders = append(encoders, codec)
 		}
 	}
-	encoders := securecookie.CodecsFromPairs(encodeKeyPairs...)
-	decoders := securecookie.CodecsFromPairs(decodeKeyPairs...)
 
 	// nextRotation is the time to rotate the secret keying material
 	nextRotation := time.Unix(cb.Secrets[0].StartAt, 0).Add(c.RotationPeriod)
@@ -212,7 +217,7 @@ func newKeyPair(secret []byte) ([]byte, []byte) {
 }
 
 // fetchSecrets and, if necessary, rotate the secrets from  the secret store.
-func (c *Codec) fetchSecrets(ctx context.Context) (*secretsT, error) {
+func (c *Codec) fetchSecrets(ctx context.Context, now time.Time) (*secretsT, error) {
 	if c.DB == nil {
 		return nil, errors.New("Codec.DB cannot be nil")
 	}
@@ -230,7 +235,7 @@ func (c *Codec) fetchSecrets(ctx context.Context) (*secretsT, error) {
 			return nil, err
 		}
 	}
-	modified, err := cb.rotate(c.rotationPeriod())
+	modified, err := cb.rotate(now, c.rotationPeriod())
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +249,7 @@ func (c *Codec) fetchSecrets(ctx context.Context) (*secretsT, error) {
 		if err != nil {
 			return nil, err
 		}
-		rec.ExpiresAt = timeNowFunc().Add(c.rotationPeriod() * 4)
+		rec.ExpiresAt = now.Add(c.rotationPeriod() * 4)
 		rec.ID = secretID
 		err := c.DB.Save(ctx, rec, oldVersion)
 		if err == storage.ErrVersionConflict {
@@ -305,8 +310,7 @@ func (ss *secretsT) unmarshal(format string, data []byte) error {
 }
 
 // rotate adds a new secret to the list, and removes any obsolete secrets.
-func (ss *secretsT) rotate(rotationPeriod time.Duration) (modified bool, err error) {
-	now := timeNowFunc()
+func (ss *secretsT) rotate(now time.Time, rotationPeriod time.Duration) (modified bool, err error) {
 	rpSecs := int64(rotationPeriod.Seconds())
 
 	// Remove any obsolete secrets, leaving at least one.
@@ -389,4 +393,116 @@ func (ic *immutableCodec) Decode(name, value string, dst interface{}) error {
 
 func (ic *immutableCodec) isExpired() bool {
 	return ic == nil || ic.expiresAt.Before(timeNowFunc())
+}
+
+// Serializer provides an interface for providing custom serializers for cookie values.
+// It is compatible with the securecookie.Serializer interface.
+type Serializer interface {
+	Serialize(src interface{}) ([]byte, error)
+	Deserialize(src []byte, dst interface{}) error
+}
+
+// naclCodec is a codec that encodes/decodes using NaCl secretbox.
+// https://nacl.cr.yp.to/secretbox.html.
+//
+// The reason we use our own encryption/decryption is mainly to have
+// smaller cookies. The securecookie implementation uses AES CTR/HMAC SHA256.
+// It base64-encodes the payload twice, and includes the cookie name and the
+// timestamp as text. All this amounts to a bloated cookie. Call me a pedant
+// but I don't like long cookies, especially for endpoints that are called
+// often with small payloads. Using the fast and modern NaCl, which both
+// encrypts and authenticates small messages also has some appeal.
+//
+// This implementation adds an overhead of 64 bytes to the serialized value
+// and base64 encodes one time only.
+type naclCodec struct {
+	KeyingMaterial [32]byte
+	Serializer     Serializer
+	MaxAge         time.Duration
+}
+
+var (
+	defaultSerializer = &securecookie.GobEncoder{}
+)
+
+func (sc *naclCodec) Encode(name string, value interface{}) (string, error) {
+	serializer := sc.Serializer
+	if serializer == nil {
+		serializer = defaultSerializer
+	}
+	serialized, err := serializer.Serialize(value)
+	if err != nil {
+		return "", err
+	}
+
+	// message is 8 bytes of unix timestamp followed by the serialized value
+	message := make([]byte, 8+len(serialized))
+	binary.BigEndian.PutUint64(message, uint64(timeNowFunc().Unix()))
+	copy(message[8:], serialized)
+
+	var nonce [24]byte
+	if _, err = randReadFunc(nonce[:]); err != nil {
+		return "", err
+	}
+
+	// Use hkdf to build the key from the keying material and the cookie name.
+	// This prevents cookie swapping without the overhead of including the name
+	// in the clear text.
+	hash := sha256.New
+	kdf := hkdf.New(hash, sc.KeyingMaterial[:], []byte(name), nil)
+	var key [32]byte
+	if _, err = kdf.Read(key[:]); err != nil {
+		return "", err
+	}
+	sealed := secretbox.Seal(nonce[:], message, &nonce, &key)
+	text := base64.RawURLEncoding.EncodeToString(sealed)
+	return text, nil
+}
+
+func (sc *naclCodec) Decode(name, value string, dst interface{}) error {
+	sealed, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return decodeError("invalid cookie characters")
+	}
+	if len(sealed) <= 24+secretbox.Overhead {
+		return decodeError("cookie has been cut")
+	}
+	var nonce [24]byte
+	copy(nonce[:], sealed[:24])
+	box := sealed[24:]
+	hash := sha256.New
+	kdf := hkdf.New(hash, sc.KeyingMaterial[:], []byte(name), nil)
+	var key [32]byte
+	if _, err = kdf.Read(key[:]); err != nil {
+		return err
+	}
+	message, ok := secretbox.Open(nil, box, &nonce, &key)
+	if !ok {
+		return decodeError("invalid cookie")
+	}
+
+	unixTimestamp := int64(binary.BigEndian.Uint64(message))
+	timestamp := time.Unix(unixTimestamp, 0)
+	maxAge := sc.MaxAge
+	if maxAge <= 0 {
+		maxAge = DefaultRotationPeriod
+	}
+	if timestamp.Add(maxAge).Before(timeNowFunc()) {
+		return decodeError("cookie expired")
+	}
+	serializer := sc.Serializer
+	if serializer == nil {
+		serializer = defaultSerializer
+	}
+	return serializer.Deserialize(message, dst)
+}
+
+type decodeError string
+
+func (e decodeError) IsDecode() bool {
+	return true
+}
+
+func (e decodeError) Error() string {
+	return string(e)
 }

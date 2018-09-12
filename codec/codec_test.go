@@ -23,6 +23,16 @@ func TestRotatePeriod(t *testing.T) {
 	}
 }
 
+func TestLength(t *testing.T) {
+	db := memory.New()
+	codec := New(db, time.Hour, "")
+
+	message := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	cipherText, err := codec.Encode("really-long-cookie-name", message)
+	wantNilError(t, err)
+	t.Logf("%d bytes: %s", len(cipherText), cipherText)
+}
+
 func TestEncodeDecode(t *testing.T) {
 	var fakeNow = time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
 	timeNowFunc = func() time.Time {
